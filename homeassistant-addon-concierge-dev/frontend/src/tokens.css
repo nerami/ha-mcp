@@ -1,0 +1,36 @@
+/* HA-flavored design tokens. --c-primary is HA's brand blue. */
+:root,
+:root[data-theme="light"] {
+  --c-bg: #fafafa;
+  --c-surface: #ffffff;
+  --c-text: #212121;
+  --c-text-secondary: #727272;
+  --c-primary: #03a9f4;
+  --c-on-primary: #ffffff;
+  --c-divider: rgba(0, 0, 0, 0.12);
+  --c-error: #db4437;
+  --c-warning: #ffa600;
+  --c-radius: 12px;
+  --c-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  --c-bg: #111318;
+  --c-surface: #1c1e24;
+  --c-text: #e1e1e1;
+  --c-text-secondary: #9b9b9b;
+  --c-primary: #03a9f4;
+  --c-on-primary: #ffffff;
+  --c-divider: rgba(255, 255, 255, 0.12);
+  --c-error: #ef5350;
+  --c-warning: #ffb74d;
+  color-scheme: dark;
+}
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--c-bg);
+  color: var(--c-text);
+  font-family: var(--c-font);
+}
