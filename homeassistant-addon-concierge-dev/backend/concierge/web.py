@@ -13,6 +13,7 @@ import asyncio
 import json
 import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager
 from http import HTTPStatus
 from typing import Any
 
@@ -50,7 +51,20 @@ def create_app(
     store: SessionStore,
     title_fn: TitleFn = generate_title,
 ) -> FastAPI:
-    app = FastAPI(title="concierge")
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        # Hold every toolset (MCP subprocess/connection) open for the app's
+        # lifetime. Without this, each POST /agui enters and exits the agent's
+        # toolsets independently: MCPToolset ref-counts entry/exit via
+        # `_running_count` and tears down at zero, so the bundled ha-mcp
+        # stdio subprocess would otherwise be spawned, handshaked, and
+        # tools-listed fresh on every single turn. Entering here once keeps
+        # `_running_count` >= 1, so the per-run enter/exit inside
+        # `adapter.run_stream()` becomes a cheap refcount no-op.
+        async with agent:
+            yield
+
+    app = FastAPI(title="concierge", lifespan=lifespan)
 
     async def _maybe_title(thread_id: str, messages: list[dict[str, Any]]) -> None:
         # to_thread here is safe: if cancellation lands in this function the

@@ -97,6 +97,54 @@ async def test_agui_invalid_input_returns_422(client) -> None:
     assert resp.status_code == 422
 
 
+@pytest.fixture
+async def client_with_toolset(tmp_path: Path):
+    """Like `client`, but also exposes the raw stub MCPToolset.
+
+    Needed to assert on `_running_count`, the ref-count pydantic-ai 2.8.0
+    uses internally to decide whether entering a toolset is a real connect
+    or a cheap no-op (see MCPToolset.__aenter__/__aexit__).
+    """
+    settings = Settings(data_dir=tmp_path)
+    raw_toolset = MCPToolset(StdioTransport(command=sys.executable, args=[STUB]))
+    toolset = raw_toolset.approval_required(approval_callback)
+    agent = await build_agent(settings, toolsets=[toolset])
+    store = SessionStore(tmp_path / "concierge.db")
+
+    async def fake_title(settings: Settings, user_text: str, **kwargs: Any) -> str:
+        return "Test title"
+
+    app = create_app(settings, agent=agent, store=store, title_fn=fake_title)
+    app.state.model_override = TestModel(call_tools=[])
+    with TestClient(app) as c:
+        yield c, store, raw_toolset
+
+
+async def test_lifespan_holds_toolset_open_across_turns(client_with_toolset) -> None:
+    c, _store, raw_toolset = client_with_toolset
+    # Lifespan already entered the agent (and therefore the toolset) once by
+    # the time TestClient's `with` block starts, so the stub's stdio
+    # subprocess is up and `_running_count` sits at its steady-state 1 --
+    # independent of any individual run.
+    assert raw_toolset._running_count == 1
+
+    tid = "t-" + uuid.uuid4().hex[:8]
+    user = {"id": "u1", "role": "user", "content": "hello"}
+
+    first = c.post("/agui", json=run_input(tid, [user]))
+    assert first.status_code == 200
+    # Back to the lifespan-held baseline: the run's own enter/exit was a
+    # refcount no-op, not a real teardown -- proving the toolset (and its
+    # underlying ha-mcp-equivalent stdio subprocess) stayed alive.
+    assert raw_toolset._running_count == 1
+
+    # Second turn on a fresh thread reuses the same still-open toolset.
+    tid2 = "t-" + uuid.uuid4().hex[:8]
+    second = c.post("/agui", json=run_input(tid2, [user]))
+    assert second.status_code == 200
+    assert raw_toolset._running_count == 1
+
+
 async def test_thread_crud(client) -> None:
     c, store = client
     store.replace_messages("t9", [{"id": "u1", "role": "user", "content": "x"}])
