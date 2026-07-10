@@ -5,7 +5,10 @@ This is the one live check the design flagged (spec §5.5/§11.3): the exact
 key casing of MCP annotations as surfaced to our gating callback.
 """
 
+from pydantic_ai import Agent, DeferredToolRequests
 from pydantic_ai.mcp import MCPToolset
+from pydantic_ai.models.test import TestModel
+from pydantic_ai.tools import ToolDefinition
 
 from concierge.agent import build_hamcp_toolset
 from concierge.config import Settings
@@ -29,6 +32,36 @@ async def test_hamcp_lists_tools_with_camel_case_annotations() -> None:
 
     annotated = [t for t in tools if t.annotations is not None]
     assert annotated, "expected ha-mcp to expose MCP annotations"
-    # the exact casing our gating reads: camelCase hints
-    sample = annotated[0].annotations
+    # the exact casing our gating reads: camelCase hints, on a fixed tool so
+    # a failure points somewhere stable.
+    sample = by_name["ha_search"].annotations
     assert hasattr(sample, "readOnlyHint") and hasattr(sample, "destructiveHint")
+
+
+async def test_gating_sees_camel_case_annotations_from_real_hamcp() -> None:
+    """Lock the shape gating.py reads: ToolDefinition.metadata['annotations'].
+
+    The approval callback fires with the pydantic-ai-mapped ToolDefinition
+    BEFORE any tool execution, so gating the call keeps the unreachable
+    fake HA out of the picture entirely.
+    """
+    captured: list[object] = []
+
+    def spy(
+        ctx: object, tool_def: ToolDefinition, tool_args: dict[str, object]
+    ) -> bool:
+        captured.append((tool_def.metadata or {}).get("annotations"))
+        return True  # gate it: run pauses, tool never executes
+
+    toolset = build_hamcp_toolset(settings())
+    assert isinstance(toolset, MCPToolset)
+    agent = Agent(
+        TestModel(call_tools=["ha_search"]),
+        toolsets=[toolset.approval_required(spy)],
+        output_type=[str, DeferredToolRequests],
+    )
+    result = await agent.run("search for lights")
+    assert isinstance(result.output, DeferredToolRequests)  # paused, not executed
+    [annotations] = captured
+    assert isinstance(annotations, dict)
+    assert annotations.get("readOnlyHint") is True  # ha_search is read-only
