@@ -256,20 +256,25 @@ Skill discovery works as follows:
 - `EventSource` is unsuitable regardless (GET-only; AG-UI POSTs `RunAgentInput`).
 - CopilotKit and other AG-UI **React** bindings are deliberately not used.
 
-### 6.3 HA channel
+### 6.3 Theme
 
-- Separate from the agent channel. Theme sync and any entity context use the
-  official **`home-assistant-js-websocket`** (or REST) — the one HA-blessed JS
-  lib, which reinforces the native story.
-- **Theme sync:** read the user's active theme and apply matching CSS custom
-  properties so the panel visually belongs in both light and dark.
+- **v1:** `prefers-color-scheme` default + a manual light/dark toggle persisted
+  in `localStorage`, stamped as `data-theme` on `<html>` by an inline
+  **anti-FOUC** script before first paint (the `settings_ui` pattern). This
+  matches HA's default follow-the-OS behavior. Inside the ingress iframe there
+  is no `hass` object and no token, so reading the user's *actual* active HA
+  theme is not feasible client-side in v1 — `home-assistant-js-websocket` is
+  therefore **not** a v1 dependency.
+- **Future:** true HA-theme sync via a small backend proxy endpoint (the
+  backend holds `ha_url`/`ha_token`) — deferred.
 
 ### 6.4 Components
 
 - Thread sidebar (list, new, rename, delete).
 - Message list + streaming assistant renderer (Markdown).
 - Tool-call cards (name, args, result state).
-- HITL approval control (approve / deny, optional arg edit).
+- HITL approval control (approve / deny; the wire contract supports
+  `editedArgs`, but an arg-editing UI is deferred past v1).
 
 ## 7. Wire contract
 
