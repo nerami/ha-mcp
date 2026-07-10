@@ -137,8 +137,10 @@ HITL: destructive tool → RUN_FINISHED{outcome:"interrupt"} lists approvals
 - **Skills** are additional `MCPToolset`s (HTTP transport to the skill add-ons,
   §5.3) attached to the same agent. ha-mcp is simply "the skill that is always
   present."
-- Each toolset is namespaced with **`.prefixed('<name>')`** (v2 API) so
-  tool-name collisions across servers are avoided automatically.
+- Each **skill** toolset is namespaced with **`.prefixed('<slug>')`** (v2 API) so
+  tool-name collisions across servers are avoided automatically. The bundled
+  ha-mcp toolset is **not** prefixed — its tools already carry the `ha_*`
+  namespace (prefixing would yield `ha_ha_*`).
 - *(API note: `MCPServerStdio` / `MCPServerStreamableHTTP` are deprecated in
   Pydantic AI v2 in favor of `MCPToolset` + transports.)*
 
@@ -167,15 +169,19 @@ Skill discovery works as follows:
   HA backups). **WAL** mode.
 - Schema:
   - `threads(id TEXT PK, title TEXT, created_at, updated_at)`
-  - `messages(thread_id, seq, message_json)` — `message_json` is a Pydantic AI
-    `ModelMessage` serialized via `ModelMessagesTypeAdapter`.
+  - `messages(thread_id, seq, message_json)` — `message_json` is an **AG-UI
+    message** (the protocol's own wire format, camelCase JSON).
   - *(No `pending_approvals` table.)* AG-UI's interrupt/resume is **client-driven**
     — the FE resends `RunAgentInput` carrying the approvals, so only message
     history is persisted server-side.
-- **Append-per-turn, not per-step.** Each turn loads the thread's `ModelMessage`
-  list, passes it as `message_history`, and appends `result.new_messages()` on
-  completion. Writing once per turn (not per step) keeps disk churn low —
-  friendly to eMMC.
+- **AG-UI is client-owns-messages:** each `RunAgentInput` carries the thread's
+  full message list, which the adapter converts into the run's history — the
+  server does not inject `message_history` itself. Server-side persistence is a
+  **tee on the event stream**: accumulate the run's AG-UI events into messages
+  and write the thread once at `RUN_FINISHED`/`RUN_ERROR`. The store's job is
+  cross-session **rehydration** (`GET /threads/{id}`), after which the client
+  round-trips the messages.
+- **One write per turn, not per step** — keeps disk churn low; friendly to eMMC.
 
 ### 5.5 Human-in-the-loop
 
@@ -280,9 +286,9 @@ not own storage) and static serving.
   `TEXT_MESSAGE_START` / `_CONTENT` / `_END`; `TOOL_CALL_START` / `_ARGS` /
   `_END` and `TOOL_CALL_RESULT`; optionally `STATE_SNAPSHOT` / `STATE_DELTA`
   (reserved for the deferred generative UI) and `CUSTOM`.
-- **Persistence is server-side:** the backend keys off the `RunAgentInput`
-  thread id to load/append the SQLite history (§5.4); AG-UI carries the turn,
-  our store owns the thread.
+- **Persistence is server-side:** the backend tees the event stream and writes
+  the turn's messages into SQLite keyed by the `RunAgentInput` thread id (§5.4);
+  AG-UI carries the turn, our store owns cross-session rehydration.
 
 ### 7.2 REST surface around AG-UI (FastAPI)
 
@@ -331,9 +337,11 @@ not own storage) and static serving.
 
 ## 10. Testing strategy
 
-- **Layout** follows the repo split: fast mocked tests in `tests/src/unit/`,
-  container/integration tests in `tests/src/e2e/` (no broad `except` inside
-  polling loops — a repo rule).
+- **Layout:** the backend is a **self-contained uv project** with its own
+  `tests/` inside the addon dir (the repo-root `tests/` project runs under the
+  root env, which does not — and should not — carry `pydantic-ai`). Repo-wide
+  container/integration tests stay in `tests/src/e2e/` for the packaging phase.
+  Repo test rules apply either way (no broad `except` inside polling loops).
 - **Backend (pytest):** Pydantic AI `TestModel` / `FunctionModel` (no live LLM)
   for agent wiring, toolset mounting + `.prefixed()`, the HITL approve/resume
   path, and a session round-trip (persist → rehydrate → continue). Skill
