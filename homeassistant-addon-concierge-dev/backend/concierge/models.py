@@ -8,6 +8,7 @@ any OpenAI-compatible endpoint (Ollama, OpenRouter, vLLM, ...).
 
 from __future__ import annotations
 
+import logging
 import os
 
 from pydantic_ai.models import Model
@@ -15,6 +16,8 @@ from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.openai import OpenAIProvider
 
 from concierge.config import Settings
+
+logger = logging.getLogger(__name__)
 
 _API_KEY_ENV = {
     "anthropic": "ANTHROPIC_API_KEY",
@@ -37,6 +40,12 @@ def _build(settings: Settings, model_name: str) -> Model | str:
     env_var = _API_KEY_ENV.get(settings.provider)
     if env_var and settings.api_key:
         os.environ[env_var] = settings.api_key
+    elif settings.api_key and not env_var:
+        logger.warning(
+            "api_key was provided but provider %r has no known API-key env var; "
+            "the key was not applied",
+            settings.provider,
+        )
     return f"{settings.provider}:{model_name}"
 
 
