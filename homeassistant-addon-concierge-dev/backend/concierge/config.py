@@ -36,7 +36,19 @@ class Settings(BaseSettings):
 
     @property
     def effective_title_model(self) -> str:
-        return self.title_model or DEFAULT_TITLE_MODEL
+        """Explicit `title_model` wins; otherwise fall back per spec §5.1.
+
+        The fixed `DEFAULT_TITLE_MODEL` name ("claude-haiku-4-5") is only
+        valid on the Anthropic native provider. On any other provider (or
+        a custom `base_url`), falling back to a Claude model name would
+        build an unresolvable model string/config, so fall back to the
+        chat `model` instead.
+        """
+        if self.title_model:
+            return self.title_model
+        if self.provider == "anthropic" and self.base_url is None:
+            return DEFAULT_TITLE_MODEL
+        return self.model
 
 
 def load_settings() -> Settings:

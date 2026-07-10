@@ -37,6 +37,18 @@ def test_title_model_uses_same_provider() -> None:
     assert build_title_model(s) == "anthropic:claude-haiku-4-5"
 
 
+def test_title_model_falls_back_to_chat_model_on_other_providers() -> None:
+    s = Settings(provider="openai", model="gpt-5")
+    assert build_title_model(s) == "openai:gpt-5"
+
+
+def test_title_model_uses_base_url_chat_model() -> None:
+    s = Settings(model="qwen3", base_url="http://ollama.local:11434/v1", api_key="k")
+    model = build_title_model(s)
+    assert isinstance(model, OpenAIChatModel)
+    assert model.model_name == "qwen3"
+
+
 def test_unmapped_provider_warns_and_skips_api_key(monkeypatch, caplog) -> None:
     for env_var in models._API_KEY_ENV.values():
         monkeypatch.delenv(env_var, raising=False)

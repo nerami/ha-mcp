@@ -29,5 +29,24 @@ def test_env_overrides(monkeypatch) -> None:
 def test_effective_title_model_falls_back() -> None:
     assert Settings().effective_title_model == "claude-haiku-4-5"
     assert Settings(title_model="m").effective_title_model == "m"
-    # explicit chat model but no title model -> default title model still used
+    # anthropic provider, no base_url, no explicit chat model -> default title model
     assert Settings(model="x").effective_title_model == "claude-haiku-4-5"
+
+
+def test_effective_title_model_falls_back_to_chat_model_on_other_providers() -> None:
+    # non-anthropic provider: DEFAULT_TITLE_MODEL ("claude-haiku-4-5") would be
+    # unresolvable, so fall back to the configured chat model instead.
+    assert (
+        Settings(provider="openai", model="gpt-5").effective_title_model == "gpt-5"
+    )
+    assert (
+        Settings(provider="google", model="gemini-2.5-pro").effective_title_model
+        == "gemini-2.5-pro"
+    )
+    # anthropic provider but a custom base_url: still not the native API.
+    assert (
+        Settings(
+            provider="anthropic", model="qwen3", base_url="http://x:9000/v1"
+        ).effective_title_model
+        == "qwen3"
+    )
