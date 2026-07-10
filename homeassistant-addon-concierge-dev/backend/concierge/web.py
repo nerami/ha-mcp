@@ -53,13 +53,17 @@ def create_app(
     app = FastAPI(title="concierge")
 
     async def _maybe_title(thread_id: str, messages: list[dict[str, Any]]) -> None:
-        if store.get_title(thread_id) is not None:
+        # to_thread here is safe: if cancellation lands in this function the
+        # title is merely skipped -- the turn's messages were already durably
+        # persisted by the synchronous write in teed()'s finally block.
+        if await asyncio.to_thread(store.get_title, thread_id) is not None:
             return
         user_text = _first_user_text(messages)
         if not user_text:
             return
         try:
-            store.set_title(thread_id, await title_fn(settings, user_text))
+            title = await title_fn(settings, user_text)
+            await asyncio.to_thread(store.set_title, thread_id, title)
         except Exception:  # noqa: BLE001 - titling must never break a turn
             logger.exception("title generation failed for thread %s", thread_id)
 
@@ -97,6 +101,11 @@ def create_app(
                     accumulator.feed(event)
                     yield event
             finally:
+                # Deliberately synchronous: this write must survive
+                # client-disconnect cancellation (an awaited to_thread here
+                # would be cancelled mid-unwind and silently drop the turn).
+                # WAL SQLite + small threads keep the event-loop block to
+                # milliseconds.
                 store.replace_messages(run_input.thread_id, accumulator.messages())
                 await _maybe_title(run_input.thread_id, accumulator.messages())
 

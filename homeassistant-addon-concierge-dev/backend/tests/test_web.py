@@ -87,6 +87,16 @@ async def test_agui_run_streams_and_persists(client) -> None:
     assert store.get_title(tid) == "Test title"
 
 
+async def test_agui_invalid_input_returns_422(client) -> None:
+    c, _store = client
+    resp = c.post(
+        "/agui",
+        content=b'{"not": "a run input"}',
+        headers={"content-type": "application/json"},
+    )
+    assert resp.status_code == 422
+
+
 async def test_thread_crud(client) -> None:
     c, store = client
     store.replace_messages("t9", [{"id": "u1", "role": "user", "content": "x"}])
