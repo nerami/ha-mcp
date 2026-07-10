@@ -8,6 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 from fastmcp.client.transports import StdioTransport
 from pydantic_ai.mcp import MCPToolset
+from pydantic_ai.models.function import AgentInfo, FunctionModel
 from pydantic_ai.models.test import TestModel
 
 from concierge.agent import build_agent
@@ -95,6 +96,33 @@ async def test_agui_invalid_input_returns_422(client) -> None:
         headers={"content-type": "application/json"},
     )
     assert resp.status_code == 422
+
+
+async def test_agui_persists_partial_text_on_mid_stream_error(client) -> None:
+    # Regression test for the sync write in web.py's teed()::finally: a turn
+    # that errors mid-stream must still persist the user message and
+    # whatever assistant text had already streamed, not just drop the turn.
+    c, store = client
+    tid = "t-" + uuid.uuid4().hex[:8]
+    user = {"id": "u1", "role": "user", "content": "hello"}
+
+    async def stream_then_raise(_messages: Any, _agent_info: AgentInfo) -> Any:
+        yield "partial answer"
+        raise RuntimeError("boom mid-stream")
+
+    c.app.state.model_override = FunctionModel(stream_function=stream_then_raise)
+
+    resp = c.post("/agui", json=run_input(tid, [user]))
+    assert resp.status_code == 200
+    events = sse_events(resp.text)
+    types = [e["type"] for e in events]
+    assert "RUN_ERROR" in types, f"expected a RUN_ERROR event, got: {types}"
+
+    stored = store.get_messages(tid)
+    assert stored[0] == user
+    assistant_messages = [m for m in stored if m.get("role") == "assistant"]
+    assert len(assistant_messages) == 1
+    assert assistant_messages[0]["content"] == "partial answer"
 
 
 @pytest.fixture
