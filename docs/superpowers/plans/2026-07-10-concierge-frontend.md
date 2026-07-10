@@ -376,7 +376,7 @@ git commit -m "feat(concierge): frontend scaffold with Lit, Vite, and anti-FOUC 
 - Test: `tests/sse.test.ts`
 
 **Interfaces:**
-- Produces: `events.ts` exporting the `AgUiEvent` discriminated union (typed subset: `RUN_STARTED`, `TEXT_MESSAGE_START/CONTENT/END`, `TOOL_CALL_START/ARGS/END`, `TOOL_CALL_RESULT`, `RUN_FINISHED` with `outcome?: {type: string; interrupts?: Interrupt[]}`, `RUN_ERROR` with `message: string`; `Interrupt = {id: string; toolCallId?: string; reason?: string; message?: string}`) plus a catch-all `{type: string}` for forward-compat. `sse.ts` exporting `async function* parseSse(body: ReadableStream<Uint8Array>): AsyncGenerator<AgUiEvent>` — splits SSE frames on `\n\n`, handles frames split across chunks, multiple `data:` lines per frame (joined with `\n`), ignores comments/other fields, tolerates `\r\n`.
+- Produces: `events.ts` exporting the `AgUiEvent` discriminated union (typed subset: `RUN_STARTED`, `TEXT_MESSAGE_START/CONTENT/END`, `TOOL_CALL_START/ARGS/END`, `TOOL_CALL_RESULT`, `RUN_FINISHED` with `outcome?: {type: string; interrupts?: Interrupt[]}`, `RUN_ERROR` with `message: string`; `Interrupt = {id: string; toolCallId?: string; reason?: string; message?: string}`). The union is **closed** — a sibling `{type: string}` catch-all would defeat discriminant narrowing on every variant (verified with tsc); unknown runtime event types pass through the parser's cast and land in consumers' `switch` `default` branches, which is the forward-compat path. `sse.ts` exporting `async function* parseSse(body: ReadableStream<Uint8Array>): AsyncGenerator<AgUiEvent>` — splits SSE frames on `\n\n`, handles frames split across chunks, multiple `data:` lines per frame (joined with `\n`), ignores comments/other fields, tolerates `\r\n`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -479,8 +479,10 @@ export type AgUiEvent =
       content: string;
     }
   | { type: "RUN_FINISHED"; outcome?: RunFinishedOutcome }
-  | { type: "RUN_ERROR"; message: string }
-  | { type: string };
+  | { type: "RUN_ERROR"; message: string };
+// Deliberately CLOSED: a sibling `{type: string}` catch-all defeats
+// discriminant narrowing on every variant. Unknown runtime event types pass
+// through parseSse's cast and reach consumers' `default` branches.
 ```
 
 `src/agui/sse.ts`:
