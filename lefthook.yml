@@ -29,6 +29,9 @@ pre-commit:
           - name: mypy-webhook-proxy
             glob: "**/*.py"
             run: uv run mypy homeassistant-addon-webhook-proxy/start.py homeassistant-addon-webhook-proxy-dev/start.py
+          - name: mypy-concierge
+            glob: "homeassistant-addon-concierge-dev/backend/**/*.py"
+            run: uv run --project homeassistant-addon-concierge-dev/backend mypy homeassistant-addon-concierge-dev/backend/concierge/
           - name: unit-tests
             glob:
               - "**/*.py"
