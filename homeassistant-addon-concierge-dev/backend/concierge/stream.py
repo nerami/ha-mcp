@@ -9,6 +9,7 @@ unchanged.
 
 from __future__ import annotations
 
+import copy
 from typing import Any
 
 _TEXT_START = "TEXT_MESSAGE_START"
@@ -25,7 +26,9 @@ def _event_type(event: Any) -> str:
 
 class MessageAccumulator:
     def __init__(self, initial_messages: list[dict[str, Any]]) -> None:
-        self._messages: list[dict[str, Any]] = list(initial_messages)
+        self._messages: list[dict[str, Any]] = [
+            copy.deepcopy(m) for m in initial_messages
+        ]
         self._by_id: dict[str, dict[str, Any]] = {
             str(m["id"]): m for m in self._messages if "id" in m
         }
@@ -57,11 +60,9 @@ class MessageAccumulator:
             message.setdefault("toolCalls", []).append(call)
             self._tool_calls[event.tool_call_id] = call
         elif kind == _TOOL_ARGS:
-            tool_call: dict[str, Any] | None = self._tool_calls.get(event.tool_call_id)
+            tool_call = self._tool_calls.get(event.tool_call_id)
             if tool_call is not None:
-                args = tool_call["function"]["arguments"]
-                assert isinstance(args, str)
-                tool_call["function"]["arguments"] = args + event.delta
+                tool_call["function"]["arguments"] += event.delta
         elif kind == _TOOL_RESULT:
             self._messages.append(
                 {

@@ -73,3 +73,11 @@ def test_unknown_events_ignored() -> None:
     acc = MessageAccumulator([])
     acc.feed(Other())
     assert acc.messages() == []
+
+
+def test_initial_messages_are_not_mutated_on_id_collision() -> None:
+    original = {"id": "a1", "role": "assistant", "content": "partial"}
+    acc = MessageAccumulator([original])
+    acc.feed(TextMessageContentEvent(message_id="a1", delta=" more"))
+    assert original == {"id": "a1", "role": "assistant", "content": "partial"}
+    assert acc.messages()[0]["content"] == "partial more"
