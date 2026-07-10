@@ -30,5 +30,8 @@ export type AgUiEvent =
       content: string;
     }
   | { type: "RUN_FINISHED"; outcome?: RunFinishedOutcome }
-  | { type: "RUN_ERROR"; message: string }
-  | { type: string };
+  | { type: "RUN_ERROR"; message: string };
+
+// Deliberately CLOSED: a sibling `{type: string}` catch-all defeats
+// discriminant narrowing on every variant. Unknown runtime event types pass
+// through parseSse's cast and reach consumers' `default` branches.

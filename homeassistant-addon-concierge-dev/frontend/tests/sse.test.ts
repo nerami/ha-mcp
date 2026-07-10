@@ -29,6 +29,12 @@ it("parses complete frames", async () => {
     "RUN_STARTED",
     "TEXT_MESSAGE_CONTENT",
   ]);
+  const second = events[1]!;
+  if (second.type === "TEXT_MESSAGE_CONTENT") {
+    expect(second.delta).toBe("Hi");
+  } else {
+    expect.unreachable("expected TEXT_MESSAGE_CONTENT");
+  }
 });
 
 it("reassembles a frame split across chunks", async () => {
