@@ -64,12 +64,4 @@ async def build_agent(
         instructions=SYSTEM_PROMPT,
         toolsets=toolsets,
         output_type=[str, DeferredToolRequests],
-        # `build_model` may return a bare "provider:model" string (native
-        # providers). Agent() eagerly resolves that string to a concrete
-        # Model class, which imports the provider's SDK (e.g. `anthropic`)
-        # even when every call site passes an explicit `model=` override (as
-        # tests do with TestModel). Defer that resolution to first actual use
-        # so constructing an Agent never requires every provider's optional
-        # dependency to be installed.
-        defer_model_check=True,
     )

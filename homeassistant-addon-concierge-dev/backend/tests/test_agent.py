@@ -1,6 +1,7 @@
 import sys
 from pathlib import Path
 
+import pytest
 from fastmcp.client.transports import StdioTransport
 from pydantic_ai import Agent, DeferredToolRequests, DeferredToolResults
 from pydantic_ai.mcp import MCPToolset
@@ -11,6 +12,15 @@ from concierge.config import Settings
 from concierge.gating import approval_callback
 
 STUB = str(Path(__file__).parent / "stub_mcp_server.py")
+
+
+@pytest.fixture(autouse=True)
+def _dummy_anthropic_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Agent() eagerly resolves the default "anthropic:..." model string at
+    # construction, and AnthropicProvider requires a key even though every
+    # run here overrides the model with TestModel. Deliberate fail-fast:
+    # a missing key should crash at startup, not at the first chat turn.
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
 
 
 def stub_toolset() -> MCPToolset:
