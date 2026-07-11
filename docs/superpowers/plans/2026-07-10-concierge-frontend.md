@@ -6,7 +6,7 @@
 
 **Architecture:** A Vite-built SPA at `homeassistant-addon-concierge-dev/frontend/` (tooled like the repo's `site/`: npm + TS + eslint; runtime deps are Lit + marked + dompurify only). Framework-free transport modules (`src/agui/`) hand-parse the AG-UI SSE stream; Lit `ReactiveController`s (`src/state/`) own turn/thread state; Lit components render. The backend gains one addition: traversal-safe static/SPA serving behind a `static_dir` setting.
 
-**Tech Stack:** Lit ^3.3.3 · TypeScript ^6 (site/ parity) · Vite ^8.1.4 · Vitest ^4.1.10 + happy-dom ^20.10.6 · marked ^18.0.6 + dompurify ^3.4.11. NO React, NO `@ag-ui/client`/RxJS, NO CopilotKit.
+**Tech Stack:** Lit ^3.3.3 · TypeScript ^6 (site/ parity) · Vite ^8.1.4 · Vitest ^4.1.10 + jsdom (test env; happy-dom was swapped out in Task 4 — DOMPurify silently fails to sanitize under happy-dom's incomplete DOM) · marked ^18.0.6 + dompurify ^3.4.11. NO React, NO `@ag-ui/client`/RxJS, NO CopilotKit.
 
 **Contract authority:** `docs/superpowers/notes/2026-07-10-backend-handoff.md` (verified wire contract). Spec: `docs/superpowers/specs/2026-07-09-concierge-addon-design.md` §6-7.
 
@@ -126,7 +126,7 @@ export default defineConfig({
     },
   },
   test: {
-    environment: "happy-dom",
+    environment: "jsdom", // happy-dom breaks DOMPurify (Task 4 finding)
     globals: true,
     include: ["tests/**/*.test.ts"],
   },
