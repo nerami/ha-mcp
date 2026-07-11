@@ -874,7 +874,7 @@ git add . && git commit -m "feat(concierge): sanitized markdown rendering"
   - `async send(text: string)` — appends the user message locally, streams the run, folds events into state (mirrors the backend accumulator: `TEXT_MESSAGE_*` build/extend an assistant message; `TOOL_CALL_START/ARGS` build `toolCalls` on the assistant message keyed by `parentMessageId ?? toolCallId`; `TOOL_CALL_RESULT` appends a tool message), captures `RUN_FINISHED.outcome.interrupts` into `pendingInterrupts`, treats `RUN_ERROR` as turn-terminal (`error` set, `streaming` false). Calls `host.requestUpdate()` after every event.
   - `async resolveInterrupt(interruptId: string, approved: boolean, reason?: string)` — builds a resume `RunAgentInput` from the CURRENT `messages` + one `ResumeEntry` (`payload.approved` boolean), clears that interrupt, streams the continuation through the same event-folding path.
   - `dispose()` no-op hooks `hostConnected/hostDisconnected`.
-  - Emits a `turn-finished` CustomEvent on the host element after a run ends cleanly (Task 6's thread list refresh hooks this).
+  - Emits a `turn-finished` CustomEvent on the host element after any `RUN_FINISHED` — including interrupt outcomes, since the backend generates titles even for gated first turns — but NOT after `RUN_ERROR`. An epoch guard makes `openThread()` safe against an in-flight turn: bumping the epoch stops the stale turn's folds/side-effects immediately.
 
 - [ ] **Step 1: Write the failing test**
 
