@@ -18,7 +18,7 @@ from http import HTTPStatus
 from typing import Any
 
 from fastapi import FastAPI, Request, Response
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, ValidationError
 from pydantic_ai import Agent
 from pydantic_ai.ui.ag_ui import AGUIAdapter
@@ -151,5 +151,23 @@ def create_app(
         if not deleted:
             return JSONResponse({"error": "thread not found"}, status_code=404)
         return Response(status_code=204)
+
+    static_dir = settings.static_dir
+    if static_dir is not None and static_dir.is_dir():
+        root = static_dir.resolve()
+        index_file = root / "index.html"
+
+        @app.get("/{full_path:path}")
+        async def spa(full_path: str) -> Response:
+            """Serve real static files; fall back to index.html (SPA).
+
+            Registered LAST so the explicit /agui and /threads routes always
+            win. Path-traversal safe: the resolved candidate must stay under
+            the static root.
+            """
+            candidate = (root / full_path).resolve()
+            if candidate.is_file() and candidate.is_relative_to(root):
+                return FileResponse(candidate)
+            return FileResponse(index_file)
 
     return app

@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     ha_url: str = ""
     ha_token: str = ""
     data_dir: Path = Path("/data")
+    # Built frontend directory; when set (and existing) the app serves it
+    # with an SPA fallback. None in tests/dev keeps the API pure.
+    static_dir: Path | None = None
     host: str = "0.0.0.0"
     port: int = 8098
     log_level: str = "info"
