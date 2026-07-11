@@ -56,6 +56,7 @@ export class ApprovalCard extends LitElement {
   `;
 
   private resolve(approved: boolean): void {
+    if (this.resolved) return; // sync guard: async disable leaves a double-click window
     this.resolved = true;
     this.dispatchEvent(
       new CustomEvent("resolve-interrupt", {
