@@ -29,7 +29,7 @@ export type ChatMessage = UserMessage | AssistantMessage | ToolMessage;
 export interface ResumeEntry {
   interruptId: string;
   status: "resolved";
-  payload: { approved: boolean; editedArgs?: object; reason?: string };
+  payload: { approved: boolean; editedArgs?: Record<string, unknown>; reason?: string };
 }
 
 export interface RunAgentInput {
@@ -55,6 +55,10 @@ export type FetchFn = (
   init?: RequestInit,
 ) => Promise<Response>;
 
+// Bare `fetch` as a default parameter would be an unbound reference —
+// browsers brand-check the receiver and throw "Illegal invocation".
+const defaultFetch: FetchFn = (url, init) => fetch(url, init);
+
 export function buildRunInput(
   threadId: string,
   messages: ChatMessage[],
@@ -77,7 +81,7 @@ export function buildRunInput(
 // dynamic path prefix, so "/agui" would escape it and 404.
 export async function* postRun(
   input: RunAgentInput,
-  fetchFn: FetchFn = fetch,
+  fetchFn: FetchFn = defaultFetch,
 ): AsyncGenerator<AgUiEvent> {
   const resp = await fetchFn("./agui", {
     method: "POST",
@@ -95,13 +99,13 @@ async function json<T>(resp: Response, what: string): Promise<T> {
   return (await resp.json()) as T;
 }
 
-export async function listThreads(fetchFn: FetchFn = fetch): Promise<ThreadMeta[]> {
+export async function listThreads(fetchFn: FetchFn = defaultFetch): Promise<ThreadMeta[]> {
   return json(await fetchFn("./threads"), "list threads");
 }
 
 export async function getThreadMessages(
   id: string,
-  fetchFn: FetchFn = fetch,
+  fetchFn: FetchFn = defaultFetch,
 ): Promise<ChatMessage[]> {
   return json(await fetchFn(`./threads/${encodeURIComponent(id)}`), "get thread");
 }
@@ -109,7 +113,7 @@ export async function getThreadMessages(
 export async function renameThread(
   id: string,
   title: string,
-  fetchFn: FetchFn = fetch,
+  fetchFn: FetchFn = defaultFetch,
 ): Promise<void> {
   const resp = await fetchFn(`./threads/${encodeURIComponent(id)}`, {
     method: "PATCH",
@@ -121,7 +125,7 @@ export async function renameThread(
 
 export async function deleteThread(
   id: string,
-  fetchFn: FetchFn = fetch,
+  fetchFn: FetchFn = defaultFetch,
 ): Promise<void> {
   const resp = await fetchFn(`./threads/${encodeURIComponent(id)}`, {
     method: "DELETE",

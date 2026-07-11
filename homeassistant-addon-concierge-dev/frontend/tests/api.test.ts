@@ -55,6 +55,23 @@ it("postRun throws on non-2xx", async () => {
   }).rejects.toThrow(/422/);
 });
 
+it("default fetch path calls fetch as a bound wrapper, not a bare reference", async () => {
+  const original = globalThis.fetch;
+  const witness = function (this: unknown, url: string | URL | Request) {
+    if (this !== undefined && this !== globalThis) {
+      throw new TypeError("Illegal invocation");
+    }
+    expect(String(url)).toBe("./threads");
+    return Promise.resolve(Response.json([]));
+  };
+  globalThis.fetch = witness as typeof fetch;
+  try {
+    await expect(listThreads()).resolves.toEqual([]); // no fetchFn injected
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
 it("thread CRUD uses relative URLs and parses JSON", async () => {
   const calls: string[] = [];
   const fetchFn = async (url: string | URL | Request, init?: RequestInit) => {
