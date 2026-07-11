@@ -8,7 +8,7 @@ describe("<concierge-app>", () => {
     await (el as HTMLElement & { updateComplete: Promise<boolean> })
       .updateComplete;
     const root = el.shadowRoot!;
-    expect(root.querySelector("main")).not.toBeNull();
+    expect(root.querySelector("thread-sidebar")).not.toBeNull();
     el.remove();
   });
 });
