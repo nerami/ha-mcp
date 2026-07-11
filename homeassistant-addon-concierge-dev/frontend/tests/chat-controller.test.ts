@@ -1,7 +1,7 @@
 import { expect, it } from "vitest";
 import { ChatController } from "../src/state/chat-controller";
 import type { AgUiEvent } from "../src/agui/events";
-import type { RunAgentInput } from "../src/agui/api";
+import type { ChatMessage, RunAgentInput } from "../src/agui/api";
 
 class FakeHost extends EventTarget {
   updates = 0;
@@ -153,4 +153,59 @@ it("discards a stale in-flight turn when openThread switches threads", async () 
   expect(c.messages).toEqual([]); // no stale folds leak into the new thread
   expect(c.streaming).toBe(false);
   expect(finished).toBe(0); // stale turn must not emit turn-finished
+});
+
+it("suppresses a stale turn's error after openThread switches threads", async () => {
+  let releaseGate!: () => void;
+  const gate = new Promise<void>((resolve) => (releaseGate = resolve));
+  let reachedGate!: () => void;
+  const atGate = new Promise<void>((resolve) => (reachedGate = resolve));
+  async function* runFn(): AsyncGenerator<AgUiEvent> {
+    yield { type: "RUN_STARTED" };
+    reachedGate();
+    await gate;
+    throw new Error("stale failure");
+  }
+  const host = new FakeHost();
+  const c = new ChatController(host as never, { runFn });
+  await c.openThread(null);
+  const sendPromise = c.send("hi");
+  await atGate;
+  await c.openThread(null); // switch threads while the stale turn is pending
+  releaseGate();
+  await sendPromise;
+  expect(c.error).toBeNull(); // stale turn's failure is not the new thread's error
+  expect(c.streaming).toBe(false);
+});
+
+it("discards a superseded rehydration when opens race", async () => {
+  const resolvers = new Map<string, (m: ChatMessage[]) => void>();
+  const loadFn = (id: string) =>
+    new Promise<ChatMessage[]>((resolve) => resolvers.set(id, resolve));
+  const host = new FakeHost();
+  const c = new ChatController(host as never, { runFn: scripted().runFn, loadFn });
+  const openA = c.openThread("A");
+  const openB = c.openThread("B");
+  resolvers.get("B")!([{ id: "b1", role: "user", content: "from B" }]);
+  resolvers.get("A")!([{ id: "a1", role: "user", content: "from A" }]);
+  await Promise.all([openA, openB]);
+  expect(c.threadId).toBe("B");
+  expect(c.messages).toEqual([{ id: "b1", role: "user", content: "from B" }]); // A discarded
+});
+
+it("send() during rehydration is a no-op", async () => {
+  let releaseLoad!: (m: ChatMessage[]) => void;
+  const loadFn = () =>
+    new Promise<ChatMessage[]>((resolve) => (releaseLoad = resolve));
+  const { runFn, calls } = scripted();
+  const host = new FakeHost();
+  const c = new ChatController(host as never, { runFn, loadFn });
+  const opening = c.openThread("t9");
+  await c.send("hi"); // thread still rehydrating: must not ship a run
+  expect(calls).toHaveLength(0);
+  expect(c.messages).toEqual([]);
+  releaseLoad([{ id: "u1", role: "user", content: "old" }]);
+  await opening;
+  expect(c.threadId).toBe("t9");
+  expect(c.messages).toHaveLength(1);
 });

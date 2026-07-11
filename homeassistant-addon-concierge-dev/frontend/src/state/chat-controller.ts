@@ -41,7 +41,9 @@ export class ChatController implements ReactiveController {
   hostDisconnected(): void {}
 
   async openThread(id: string | null): Promise<void> {
-    this.turnEpoch++; // invalidate any in-flight turn before resetting state
+    // Bump the epoch to invalidate any in-flight turn AND any still-pending
+    // rehydration from an earlier openThread() call.
+    const epoch = ++this.turnEpoch;
     this.streaming = false;
     this.error = null;
     this.pendingInterrupts = [];
@@ -50,8 +52,13 @@ export class ChatController implements ReactiveController {
       this.threadId = crypto.randomUUID();
       this.messages = [];
     } else {
+      // Block send() while rehydrating: its threadId guard sees null.
+      this.threadId = null;
+      this.messages = [];
+      const loaded = await this.loadFn(id);
+      if (this.turnEpoch !== epoch) return; // superseded by a newer open
       this.threadId = id;
-      this.messages = await this.loadFn(id);
+      this.messages = loaded;
     }
     this.host.requestUpdate();
   }
