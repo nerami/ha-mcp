@@ -27,6 +27,8 @@ export class ChatController implements ReactiveController {
   private runFn: RunFn;
   private loadFn: LoadFn;
   private host: Host;
+  /** Bumped by openThread(); a turn started under an older epoch is stale. */
+  private turnEpoch = 0;
 
   constructor(host: Host, opts: { runFn?: RunFn; loadFn?: LoadFn } = {}) {
     this.host = host;
@@ -39,6 +41,8 @@ export class ChatController implements ReactiveController {
   hostDisconnected(): void {}
 
   async openThread(id: string | null): Promise<void> {
+    this.turnEpoch++; // invalidate any in-flight turn before resetting state
+    this.streaming = false;
     this.error = null;
     this.pendingInterrupts = [];
     this.toolCallsInFlight = new Map();
@@ -67,6 +71,8 @@ export class ChatController implements ReactiveController {
     reason?: string,
   ): Promise<void> {
     if (this.threadId === null || this.streaming) return;
+    // Never send a resume for an interrupt id we don't hold.
+    if (!this.pendingInterrupts.some((i) => i.id === interruptId)) return;
     const entry: ResumeEntry = {
       interruptId,
       status: "resolved",
@@ -79,24 +85,36 @@ export class ChatController implements ReactiveController {
   }
 
   private async runTurn(input: RunAgentInput): Promise<void> {
+    const epoch = this.turnEpoch;
     this.streaming = true;
     this.error = null;
     this.host.requestUpdate();
     let finishedCleanly = false;
     try {
       for await (const ev of this.runFn(input)) {
+        if (this.turnEpoch !== epoch) break; // thread switched: stale turn, discard
         this.fold(ev);
         this.host.requestUpdate();
         if (ev.type === "RUN_ERROR") break; // turn-terminal per contract
         if (ev.type === "RUN_FINISHED") finishedCleanly = true;
       }
     } catch (e) {
-      this.error = e instanceof Error ? e.message : String(e);
+      if (this.turnEpoch === epoch) {
+        this.error = e instanceof Error ? e.message : String(e);
+      }
     } finally {
-      this.streaming = false;
-      this.host.requestUpdate();
-      if (finishedCleanly && this.host.dispatchEvent) {
-        this.host.dispatchEvent(new CustomEvent("turn-finished"));
+      // A stale turn must not touch the new thread's state or emit events;
+      // openThread() already reset streaming for the new epoch.
+      if (this.turnEpoch === epoch) {
+        this.streaming = false;
+        this.host.requestUpdate();
+        // turn-finished fires after ANY RUN_FINISHED — including
+        // outcome.type === "interrupt" (the backend generates thread titles
+        // even for gated first turns, and consumers refresh titles on this
+        // event) — but never after RUN_ERROR.
+        if (finishedCleanly && this.host.dispatchEvent) {
+          this.host.dispatchEvent(new CustomEvent("turn-finished"));
+        }
       }
     }
   }

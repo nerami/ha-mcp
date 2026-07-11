@@ -32,6 +32,8 @@ it("folds a plain text turn into messages", async () => {
     { type: "RUN_FINISHED" },
   );
   const host = new FakeHost();
+  let finished = 0;
+  host.addEventListener("turn-finished", () => finished++);
   const c = new ChatController(host as never, { runFn });
   await c.openThread(null);
   await c.send("hi");
@@ -40,6 +42,7 @@ it("folds a plain text turn into messages", async () => {
   expect(c.streaming).toBe(false);
   expect(c.error).toBeNull();
   expect(host.updates).toBeGreaterThan(2);
+  expect(finished).toBe(1); // clean finish fires turn-finished once
 });
 
 it("folds tool calls and results", async () => {
@@ -71,11 +74,14 @@ it("captures interrupts and resumes with approval", async () => {
     { type: "RUN_FINISHED", outcome: { type: "interrupt", interrupts: [interrupt] } },
   );
   const host = new FakeHost();
+  let finished = 0;
+  host.addEventListener("turn-finished", () => finished++);
   const c = new ChatController(host as never, { runFn: turn1.runFn });
   await c.openThread(null);
   await c.send("turn it off");
   expect(c.pendingInterrupts).toEqual([interrupt]);
   expect(c.streaming).toBe(false);
+  expect(finished).toBe(1); // interrupt finish still fires turn-finished (title refresh)
 
   const turn2 = scripted(
     { type: "RUN_STARTED" },
@@ -83,6 +89,8 @@ it("captures interrupts and resumes with approval", async () => {
     { type: "RUN_FINISHED", outcome: { type: "success" } },
   );
   c.setRunFnForTests(turn2.runFn);
+  await c.resolveInterrupt("nope", true); // unknown id: no-op, no resume sent
+  expect(turn2.calls).toHaveLength(0);
   await c.resolveInterrupt("i1", true);
   expect(turn2.calls[0]!.resume).toEqual([
     { interruptId: "i1", status: "resolved", payload: { approved: true } },
@@ -99,12 +107,15 @@ it("treats RUN_ERROR as turn-terminal", async () => {
     { type: "RUN_ERROR", message: "boom" },
   );
   const host = new FakeHost();
+  let finished = 0;
+  host.addEventListener("turn-finished", () => finished++);
   const c = new ChatController(host as never, { runFn });
   await c.openThread(null);
   await c.send("hi");
   expect(c.error).toBe("boom");
   expect(c.streaming).toBe(false);
   expect(c.messages.at(-1)).toMatchObject({ role: "assistant", content: "partial" });
+  expect(finished).toBe(0); // RUN_ERROR must not fire turn-finished
 });
 
 it("rehydrates an existing thread", async () => {
@@ -114,4 +125,32 @@ it("rehydrates an existing thread", async () => {
   await c.openThread("t9");
   expect(c.threadId).toBe("t9");
   expect(c.messages).toHaveLength(1);
+});
+
+it("discards a stale in-flight turn when openThread switches threads", async () => {
+  let releaseGate!: () => void;
+  const gate = new Promise<void>((resolve) => (releaseGate = resolve));
+  let reachedGate!: () => void;
+  const atGate = new Promise<void>((resolve) => (reachedGate = resolve));
+  async function* runFn(): AsyncGenerator<AgUiEvent> {
+    yield { type: "RUN_STARTED" };
+    yield { type: "TEXT_MESSAGE_CONTENT", messageId: "a1", delta: "stale" };
+    reachedGate();
+    await gate;
+    yield { type: "TEXT_MESSAGE_CONTENT", messageId: "a1", delta: " never" };
+    yield { type: "RUN_FINISHED" };
+  }
+  const host = new FakeHost();
+  let finished = 0;
+  host.addEventListener("turn-finished", () => finished++);
+  const c = new ChatController(host as never, { runFn });
+  await c.openThread(null);
+  const sendPromise = c.send("hi");
+  await atGate; // stream is mid-turn, paused inside the generator
+  await c.openThread(null); // user switches to a new thread
+  releaseGate();
+  await sendPromise;
+  expect(c.messages).toEqual([]); // no stale folds leak into the new thread
+  expect(c.streaming).toBe(false);
+  expect(finished).toBe(0); // stale turn must not emit turn-finished
 });
