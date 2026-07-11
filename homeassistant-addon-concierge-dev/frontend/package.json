@@ -20,7 +20,7 @@
   "devDependencies": {
     "@vitest/coverage-v8": "^4.1.10",
     "eslint": "^9.39.0",
-    "happy-dom": "^20.10.6",
+    "jsdom": "^29.1.1",
     "prettier": "^3.6.0",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.61.0",
