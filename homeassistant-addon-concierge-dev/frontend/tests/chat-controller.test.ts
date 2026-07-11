@@ -193,6 +193,47 @@ it("discards a superseded rehydration when opens race", async () => {
   expect(c.messages).toEqual([{ id: "b1", role: "user", content: "from B" }]); // A discarded
 });
 
+it("exposes loading while a rehydration is pending", async () => {
+  let releaseLoad!: (m: ChatMessage[]) => void;
+  const loadFn = () =>
+    new Promise<ChatMessage[]>((resolve) => (releaseLoad = resolve));
+  const host = new FakeHost();
+  const c = new ChatController(host as never, { runFn: scripted().runFn, loadFn });
+  expect(c.loading).toBe(false);
+  const opening = c.openThread("t9");
+  expect(c.loading).toBe(true); // gated rehydration in flight
+  releaseLoad([{ id: "u1", role: "user", content: "old" }]);
+  await opening;
+  expect(c.loading).toBe(false);
+});
+
+it("a superseded open's settle does not clear the winner's loading", async () => {
+  const resolvers = new Map<string, (m: ChatMessage[]) => void>();
+  const loadFn = (id: string) =>
+    new Promise<ChatMessage[]>((resolve) => resolvers.set(id, resolve));
+  const host = new FakeHost();
+  const c = new ChatController(host as never, { runFn: scripted().runFn, loadFn });
+  const openA = c.openThread("A");
+  const openB = c.openThread("B");
+  expect(c.loading).toBe(true);
+  resolvers.get("A")!([{ id: "a1", role: "user", content: "from A" }]);
+  await openA; // superseded open settles: B's loading must survive
+  expect(c.loading).toBe(true);
+  resolvers.get("B")!([{ id: "b1", role: "user", content: "from B" }]);
+  await openB;
+  expect(c.loading).toBe(false);
+});
+
+it("clears loading when the rehydration load rejects", async () => {
+  const loadFn = async (): Promise<ChatMessage[]> => {
+    throw new Error("down");
+  };
+  const host = new FakeHost();
+  const c = new ChatController(host as never, { runFn: scripted().runFn, loadFn });
+  await expect(c.openThread("t9")).rejects.toThrow("down");
+  expect(c.loading).toBe(false);
+});
+
 it("send() during rehydration is a no-op", async () => {
   let releaseLoad!: (m: ChatMessage[]) => void;
   const loadFn = () =>

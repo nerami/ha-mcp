@@ -85,11 +85,15 @@ export class ChatPanel extends LitElement {
 
   private onSubmit(e: Event): void {
     e.preventDefault();
+    const c = this.controller;
+    // Keep the draft: send() silently no-ops in these states, so clearing
+    // the textarea here would lose the user's message.
+    if (c.streaming || c.loading || c.threadId === null) return;
     const area = this.shadowRoot!.querySelector("textarea")!;
     const text = area.value.trim();
     if (!text) return;
     area.value = "";
-    void this.controller.send(text);
+    void c.send(text);
   }
 
   private onResolve(e: Event): void {
@@ -120,9 +124,11 @@ export class ChatPanel extends LitElement {
           <textarea
             aria-label="Message Concierge"
             placeholder="Ask about your home…"
-            ?disabled=${c.streaming}
+            ?disabled=${c.streaming || c.loading}
           ></textarea>
-          <button type="submit" ?disabled=${c.streaming}>Send</button>
+          <button type="submit" ?disabled=${c.streaming || c.loading}>
+            Send
+          </button>
         </form>
       </main>
     `;

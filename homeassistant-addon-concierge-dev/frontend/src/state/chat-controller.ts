@@ -20,6 +20,8 @@ export class ChatController implements ReactiveController {
   threadId: string | null = null;
   messages: ChatMessage[] = [];
   streaming = false;
+  /** True while an existing thread's messages are being rehydrated. */
+  loading = false;
   pendingInterrupts: Interrupt[] = [];
   error: string | null = null;
   toolCallsInFlight = new Map<string, { name: string; args: string; result?: string }>();
@@ -45,6 +47,7 @@ export class ChatController implements ReactiveController {
     // rehydration from an earlier openThread() call.
     const epoch = ++this.turnEpoch;
     this.streaming = false;
+    this.loading = false;
     this.error = null;
     this.pendingInterrupts = [];
     this.toolCallsInFlight = new Map();
@@ -55,10 +58,22 @@ export class ChatController implements ReactiveController {
       // Block send() while rehydrating: its threadId guard sees null.
       this.threadId = null;
       this.messages = [];
-      const loaded = await this.loadFn(id);
-      if (this.turnEpoch !== epoch) return; // superseded by a newer open
-      this.threadId = id;
-      this.messages = loaded;
+      this.loading = true;
+      this.host.requestUpdate();
+      try {
+        const loaded = await this.loadFn(id);
+        if (this.turnEpoch !== epoch) return; // superseded by a newer open
+        this.threadId = id;
+        this.messages = loaded;
+      } finally {
+        // Epoch-guarded: a superseded open's settle (resolve OR reject) must
+        // not clear the winning open's loading flag. requestUpdate here so a
+        // rejected load (which skips the tail below) still re-enables the UI.
+        if (this.turnEpoch === epoch) {
+          this.loading = false;
+          this.host.requestUpdate();
+        }
+      }
     }
     this.host.requestUpdate();
   }

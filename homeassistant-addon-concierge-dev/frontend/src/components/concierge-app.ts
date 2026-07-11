@@ -8,7 +8,8 @@ import type { ChatPanel } from "./chat-panel";
 
 @customElement("concierge-app")
 export class ConciergeApp extends LitElement {
-  private threads = new ThreadsController(this);
+  // Public for tests (mirrors chat-panel's public `controller` precedent).
+  readonly threads = new ThreadsController(this);
   @state() private activeId: string | null = null;
 
   static styles = css`
