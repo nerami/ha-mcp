@@ -7,11 +7,17 @@ import yaml
 
 ADDON_DIR = Path(__file__).resolve().parents[2]
 CONFIG = ADDON_DIR / "config.yaml"
+TRANSLATIONS = ADDON_DIR / "translations" / "en.yaml"
 
 
 @pytest.fixture(scope="module")
 def manifest() -> dict:
     return yaml.safe_load(CONFIG.read_text())
+
+
+@pytest.fixture(scope="module")
+def translations() -> dict:
+    return yaml.safe_load(TRANSLATIONS.read_text())
 
 
 def test_config_is_valid_yaml_with_required_keys(manifest: dict) -> None:
@@ -41,4 +47,13 @@ def test_dev_version_is_devN(manifest: dict) -> None:
 def test_options_have_schema_and_vice_versa(manifest: dict) -> None:
     assert set(manifest["options"]) == set(manifest["schema"]), (
         "every option needs a schema entry and vice versa"
+    )
+
+
+def test_options_have_translation_labels(manifest: dict, translations: dict) -> None:
+    # Every option needs a UI label/description in translations/en.yaml, and no
+    # translation may reference an option that no longer exists.
+    assert set(translations["configuration"]) == set(manifest["options"]), (
+        "translations/en.yaml configuration keys must match config.yaml options "
+        "exactly (no unlabelled options, no orphan labels)"
     )
