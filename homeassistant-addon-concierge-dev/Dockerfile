@@ -19,8 +19,13 @@ COPY backend/pyproject.toml backend/uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-install-project --no-dev
 COPY backend/concierge ./concierge
+# --reinstall-package: the backend's version is a static 0.0.0 placeholder, so
+# uv's cache mount would otherwise serve a stale concierge-backend wheel after a
+# concierge/*.py edit (uv's rebuild key for a path project is pyproject.toml,
+# which never changes). Forcing a reinstall of only the local wheel rebuilds it
+# every time while the pinned PyPI deps stay cached.
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-dev --no-editable
+    uv sync --locked --no-dev --no-editable --reinstall-package concierge-backend
 
 # --- Stage 3: runtime ---
 FROM python:3.13-slim@sha256:3de9a8d7aedbb7984dc18f2dff178a7850f16c1ae7c34ba9d7ecc23d0755e35f

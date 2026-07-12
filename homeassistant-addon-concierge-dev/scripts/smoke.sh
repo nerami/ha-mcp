@@ -19,10 +19,13 @@ cat > "$DATA/options.json" <<'JSON'
  "base_url":"","auto_run_tools":true,"skills":[],"tracing":false,"log_level":"info"}
 JSON
 
-# --no-cache: the backend package version is a static 0.0.0 placeholder, so uv's
-# build cache can serve a stale wheel after a backend edit; rebuild from scratch
-# so the smoke always validates the committed source (correctness over speed).
-docker build --no-cache --build-arg BUILD_VERSION=0.1.0.dev1 --build-arg BUILD_ARCH=amd64 \
+# Build freshness is handled inside the Dockerfile: its project-install step uses
+# `uv sync ... --reinstall-package concierge-backend`, which rebuilds the local
+# wheel on every build even though the backend's static 0.0.0 version never busts
+# uv's cache mount. So a plain cache-enabled build still validates committed
+# source here (and `docker build --no-cache` would NOT clear that cache mount
+# anyway). Layer caching is left on for speed.
+docker build --build-arg BUILD_VERSION=0.1.0.dev1 --build-arg BUILD_ARCH=amd64 \
   -t "$IMAGE" "$ADDON_DIR" >/dev/null
 
 # SUPERVISOR_TOKEN: Supervisor always injects this for hassio_api/homeassistant_api
