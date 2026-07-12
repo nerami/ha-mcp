@@ -21,9 +21,9 @@ RUNTIME_SUPPLIED = {
     "data_dir",
     "host",
     "port",
-    # Baked into the image / set directly by run.py (never from
-    # /data/options.json — there is no user-facing use case for changing
-    # where the built frontend lives), so it has no config.yaml option.
+    # Baked into the image by the Dockerfile (CONCIERGE_STATIC_DIR=/app/static,
+    # never from /data/options.json — there is no user-facing use case for
+    # changing where the built frontend lives), so it has no config.yaml option.
     "static_dir",
 }
 
