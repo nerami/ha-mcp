@@ -32,6 +32,9 @@ pre-commit:
           - name: mypy-concierge
             glob: "homeassistant-addon-concierge-dev/backend/**/*.py"
             run: uv run --project homeassistant-addon-concierge-dev/backend mypy homeassistant-addon-concierge-dev/backend/concierge/
+          - name: frontend-concierge
+            glob: "homeassistant-addon-concierge-dev/frontend/**/*.{ts,js,html,css,json}"
+            run: cd homeassistant-addon-concierge-dev/frontend && npm run lint && npm run typecheck
           - name: unit-tests
             glob:
               - "**/*.py"
