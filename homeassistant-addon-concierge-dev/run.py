@@ -48,13 +48,27 @@ def build_env(options: dict, supervisor_token: str | None) -> dict[str, str]:
     return env
 
 
+def load_options() -> dict:
+    """Read /data/options.json, returning {} on any read/parse/shape problem.
+
+    This runs as PID 1 in the add-on container, so a corrupt or hand-edited
+    options file must degrade to defaults rather than crash-loop the add-on.
+    """
+    if not OPTIONS_FILE.is_file():
+        return {}
+    try:
+        options = json.loads(OPTIONS_FILE.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        _log(f"could not read {OPTIONS_FILE}: {exc}; using defaults")
+        return {}
+    if not isinstance(options, dict):
+        _log("options.json is not a JSON object; using defaults")
+        return {}
+    return options
+
+
 def main() -> None:
-    options: dict = {}
-    if OPTIONS_FILE.is_file():
-        try:
-            options = json.loads(OPTIONS_FILE.read_text())
-        except (OSError, json.JSONDecodeError) as exc:
-            _log(f"could not read {OPTIONS_FILE}: {exc}; using defaults")
+    options = load_options()
 
     token = os.environ.get("SUPERVISOR_TOKEN")
     if not token:

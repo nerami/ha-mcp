@@ -57,9 +57,34 @@ def test_blank_optionals_are_omitted() -> None:
     assert env["CONCIERGE_HA_URL"] == "http://supervisor/core"
 
 
-def test_missing_options_file_yields_defaults(tmp_path) -> None:
+def test_missing_options_file_yields_defaults() -> None:
     run = _load_run()
     env = run.build_env({}, supervisor_token="t")
     # empty options -> only the always-set keys, no crash
     assert env["CONCIERGE_SKILLS"] == "[]"
     assert env["CONCIERGE_AUTO_RUN_TOOLS"] == "false"
+
+
+def test_load_options_non_dict_falls_back_to_empty(tmp_path, monkeypatch) -> None:
+    run = _load_run()
+    options_file = tmp_path / "options.json"
+    options_file.write_text("[]")
+    monkeypatch.setattr(run, "OPTIONS_FILE", options_file)
+    # Valid JSON but not an object -> defaults, no crash.
+    assert run.load_options() == {}
+
+
+def test_load_options_malformed_falls_back_to_empty(tmp_path, monkeypatch) -> None:
+    run = _load_run()
+    options_file = tmp_path / "options.json"
+    options_file.write_text("{not valid json")
+    monkeypatch.setattr(run, "OPTIONS_FILE", options_file)
+    assert run.load_options() == {}
+
+
+def test_load_options_reads_object(tmp_path, monkeypatch) -> None:
+    run = _load_run()
+    options_file = tmp_path / "options.json"
+    options_file.write_text('{"provider": "openai"}')
+    monkeypatch.setattr(run, "OPTIONS_FILE", options_file)
+    assert run.load_options() == {"provider": "openai"}
