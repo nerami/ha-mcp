@@ -33,10 +33,22 @@ def _gated(toolset: MCPToolset, settings: Settings) -> AbstractToolset:
 
 def build_hamcp_toolset(settings: Settings) -> AbstractToolset:
     """Bundled ha-mcp over stdio. Tools already carry ha_* names: no prefix."""
+    # The bundled ha-mcp runs over stdio in its "standard" mode, which refuses
+    # to start unless BOTH HOMEASSISTANT_URL and HOMEASSISTANT_TOKEN hold real
+    # (non-empty) values: it treats an empty/absent value as a fatal "missing
+    # required variable" and exits, and a stdio subprocess exit crash-loops the
+    # whole add-on at startup (its token-optional OAuth mode is a separate,
+    # HTTP-only entrypoint we can't reach over stdio). Under Supervisor both
+    # come from the core proxy URL + SUPERVISOR_TOKEN; without Supervisor
+    # (local/dev, or a misconfigured install) the token is empty. Substitute a
+    # harmless placeholder for any missing value so ha-mcp always starts and can
+    # list its tools — ha-mcp connects to HA lazily per call, so a placeholder
+    # never blocks startup and HA-backed calls simply fail at request time
+    # (graceful degradation) instead of preventing the add-on from serving.
     env = {
         **os.environ,
-        "HOMEASSISTANT_URL": settings.ha_url,
-        "HOMEASSISTANT_TOKEN": settings.ha_token,
+        "HOMEASSISTANT_URL": settings.ha_url or "http://supervisor/core",
+        "HOMEASSISTANT_TOKEN": settings.ha_token or "unauthenticated",
     }
     transport = StdioTransport(command="ha-mcp", args=[], env=env)
     return _gated(MCPToolset(transport), settings)

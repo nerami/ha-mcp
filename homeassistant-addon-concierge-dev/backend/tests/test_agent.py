@@ -105,6 +105,24 @@ def test_hamcp_toolset_is_gated_and_unprefixed() -> None:
     assert env["HOMEASSISTANT_TOKEN"] == "t"
 
 
+def test_hamcp_toolset_substitutes_empty_ha_creds() -> None:
+    # ha-mcp's stdio "standard" mode refuses to start on an empty/absent
+    # HOMEASSISTANT_TOKEN (or URL) — it exits with "missing required variable",
+    # crash-looping the whole add-on. When no Supervisor token is available the
+    # toolset must forward a non-empty placeholder so ha-mcp starts and can list
+    # its tools; HA-backed calls then fail at request time (graceful degradation)
+    # rather than at startup. Both a real value and a placeholder are non-empty,
+    # which is all ha-mcp's startup validation requires.
+    toolset = build_hamcp_toolset(
+        Settings(ha_url="", ha_token="", auto_run_tools=True)
+    )
+    # auto_run_tools=True returns the raw MCPToolset (no gating wrapper).
+    assert type(toolset) is MCPToolset
+    env = toolset.client.transport.env
+    assert env["HOMEASSISTANT_URL"]  # non-empty placeholder
+    assert env["HOMEASSISTANT_TOKEN"]  # non-empty placeholder
+
+
 def test_hamcp_toolset_ungated_when_auto_run() -> None:
     settings = Settings(auto_run_tools=True, ha_url="http://ha:8123", ha_token="t")
     toolset = build_hamcp_toolset(settings)
