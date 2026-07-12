@@ -1,6 +1,8 @@
 import asyncio
+import logging
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from concierge.config import Settings
@@ -55,6 +57,28 @@ def test_api_routes_not_shadowed(tmp_path: Path) -> None:
 def test_no_static_dir_means_no_route(tmp_path: Path) -> None:
     with TestClient(make_app(tmp_path, None)) as c:
         assert c.get("/anything").status_code == 404
+
+
+def test_static_dir_without_index_disables_static_serving(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A broken/incomplete build (no index.html) must not 500 every request.
+
+    The catch-all route is simply not registered: static paths 404, the API
+    keeps working, and a warning points at the incomplete build.
+    """
+    site = tmp_path / "dist"
+    site.mkdir()
+    (site / "app.js").write_text("console.log(1)")  # real file, but no index.html
+
+    with caplog.at_level(logging.WARNING, logger="concierge.web"):
+        app = make_app(tmp_path, site)
+
+    assert "no index.html" in caplog.text
+    with TestClient(app) as c:
+        assert c.get("/").status_code == 404
+        assert c.get("/anything").status_code == 404
+        assert c.get("/threads").json() == []
 
 
 def test_traversal_check_itself_blocks_escaping_path(tmp_path: Path) -> None:

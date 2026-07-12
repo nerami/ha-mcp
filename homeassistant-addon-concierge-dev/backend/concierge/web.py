@@ -156,18 +156,25 @@ def create_app(
     if static_dir is not None and static_dir.is_dir():
         root = static_dir.resolve()
         index_file = root / "index.html"
+        if not index_file.is_file():
+            logger.warning(
+                "static_dir %s has no index.html; static serving disabled "
+                "(is the frontend build complete?)",
+                root,
+            )
+        else:
 
-        @app.get("/{full_path:path}")
-        async def spa(full_path: str) -> Response:
-            """Serve real static files; fall back to index.html (SPA).
+            @app.get("/{full_path:path}")
+            async def spa(full_path: str) -> Response:
+                """Serve real static files; fall back to index.html (SPA).
 
-            Registered LAST so the explicit /agui and /threads routes always
-            win. Path-traversal safe: the resolved candidate must stay under
-            the static root.
-            """
-            candidate = (root / full_path).resolve()
-            if candidate.is_file() and candidate.is_relative_to(root):
-                return FileResponse(candidate)
-            return FileResponse(index_file)
+                Registered LAST so the explicit /agui and /threads routes
+                always win. Path-traversal safe: the resolved candidate must
+                stay under the static root.
+                """
+                candidate = (root / full_path).resolve()
+                if candidate.is_file() and candidate.is_relative_to(root):
+                    return FileResponse(candidate)
+                return FileResponse(index_file)
 
     return app
