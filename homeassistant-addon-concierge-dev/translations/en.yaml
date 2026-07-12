@@ -1,0 +1,45 @@
+---
+configuration:
+  provider:
+    name: LLM provider
+    description: >
+      Which model provider to use: anthropic (default), openai, google, groq,
+      mistral, bedrock, or a custom OpenAI-compatible endpoint (set Base URL).
+  model:
+    name: Chat model
+    description: >
+      Model id for the main conversation (e.g. claude-sonnet-5). Assumes a
+      high-quality, tool-capable model.
+  title_model:
+    name: Title model (optional)
+    description: >
+      Cheaper model used only to name new conversations. Blank = a sensible
+      default for your provider.
+  api_key:
+    name: API key
+    description: >
+      Credential for the selected provider. Not needed for providers that
+      authenticate another way (e.g. AWS Bedrock).
+  base_url:
+    name: Base URL (optional)
+    description: >
+      For OpenAI-compatible / local endpoints (Ollama, vLLM, OpenRouter…).
+      Leave blank for native providers.
+  auto_run_tools:
+    name: Auto-run all tools
+    description: >
+      When on, the concierge runs every tool without asking. Off (default)
+      requires your approval before any destructive action.
+  skills:
+    name: Skill add-ons
+    description: >
+      Short slugs of installed ha-concierge-skill-* add-ons to mount as extra
+      tools (or full http(s)://…/mcp URLs). One per line.
+  tracing:
+    name: Enable tracing
+    description: >
+      Export OpenTelemetry traces (point OTEL_EXPORTER_OTLP_* at Langfuse or
+      Logfire). Off by default.
+  log_level:
+    name: Log level
+    description: Verbosity of the add-on log (debug, info, warning, error).

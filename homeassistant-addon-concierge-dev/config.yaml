@@ -1,0 +1,45 @@
+name: "Concierge for HA MCP (Dev)"
+description: "DEV CHANNEL (unstable) — a self-hosted chat concierge for your smart home, powered by ha-mcp. Open it from the Home Assistant app; no external agent needed."
+version: "0.1.0.dev1"
+slug: "ha_mcp_concierge_dev"
+url: "https://github.com/homeassistant-ai/ha-mcp"
+stage: experimental
+arch:
+  - aarch64
+  - amd64
+init: false
+startup: application
+boot: manual
+# Ingress: the UI is reached only through Supervisor's authenticated proxy.
+# ingress_stream keeps the AG-UI SSE event stream unbuffered.
+# NO ports: / NO host_network: — /agui is unauthenticated by design and must
+# never be exposed on the LAN; ingress is the auth boundary.
+ingress: true
+ingress_port: 8098
+ingress_stream: true
+panel_icon: mdi:robot-happy
+panel_title: "Concierge (Dev)"
+# The add-on talks to HA via the Supervisor core proxy using its own token.
+homeassistant_api: true
+hassio_api: true
+options:
+  provider: "anthropic"
+  model: "claude-sonnet-5"
+  title_model: ""
+  api_key: ""
+  base_url: ""
+  auto_run_tools: false
+  skills: []
+  tracing: false
+  log_level: "info"
+schema:
+  provider: str
+  model: str
+  title_model: str?
+  api_key: password?
+  base_url: str?
+  auto_run_tools: bool
+  skills:
+    - str
+  tracing: bool?
+  log_level: list(debug|info|warning|error)?
