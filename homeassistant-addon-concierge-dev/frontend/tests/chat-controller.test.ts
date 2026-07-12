@@ -250,3 +250,67 @@ it("send() during rehydration is a no-op", async () => {
   expect(c.threadId).toBe("t9");
   expect(c.messages).toHaveLength(1);
 });
+
+it("unblocks interaction at RUN_FINISHED, not at stream close (server-side titling window)", async () => {
+  // Reproduces the reviewer's live probe: the backend holds the SSE response
+  // open ~1 title-model round-trip PAST RUN_FINISHED. Approvals must not be
+  // dropped, and approval-cards must not go permanently dead, during that
+  // window.
+  const interrupt = { id: "i1", toolCallId: "c1" };
+  let releaseGate!: () => void;
+  const gate = new Promise<void>((resolve) => (releaseGate = resolve));
+  let reachedGate!: () => void;
+  const atGate = new Promise<void>((resolve) => (reachedGate = resolve));
+  async function* runFn(): AsyncGenerator<AgUiEvent> {
+    yield { type: "RUN_STARTED" };
+    yield {
+      type: "TOOL_CALL_START",
+      toolCallId: "c1",
+      toolCallName: "ha_call_service",
+      parentMessageId: "a1",
+    };
+    yield { type: "TOOL_CALL_END", toolCallId: "c1" };
+    yield { type: "RUN_FINISHED", outcome: { type: "interrupt", interrupts: [interrupt] } };
+    // By the time the generator resumes here, the consumer has already
+    // folded RUN_FINISHED (for-await only resumes the producer after the
+    // loop body for the prior value has run).
+    reachedGate();
+    await gate; // simulates the open titling window: stream stays open
+    // Any events the old, superseded turn produces after a newer turn has
+    // started must never fold into shared state.
+    yield { type: "TEXT_MESSAGE_CONTENT", messageId: "ghost", delta: "leaked" };
+    yield { type: "RUN_FINISHED" };
+  }
+  const host = new FakeHost();
+  let finished = 0;
+  host.addEventListener("turn-finished", () => finished++);
+  const c = new ChatController(host as never, { runFn });
+  await c.openThread(null);
+  const sendPromise = c.send("turn it off");
+  await atGate;
+
+  // The interaction must unblock right at RUN_FINISHED, well before the
+  // stream closes (the gate is still held).
+  expect(c.streaming).toBe(false);
+  expect(c.pendingInterrupts).toEqual([interrupt]);
+  expect(finished).toBe(0); // stream hasn't closed yet: no turn-finished
+
+  // The approval click must not be dropped by a stale `streaming` guard.
+  const turn2 = scripted(
+    { type: "RUN_STARTED" },
+    { type: "TOOL_CALL_RESULT", messageId: "r1", toolCallId: "c1", content: "done" },
+    { type: "RUN_FINISHED", outcome: { type: "success" } },
+  );
+  c.setRunFnForTests(turn2.runFn);
+  await c.resolveInterrupt("i1", true);
+  expect(turn2.calls).toHaveLength(1); // resume run actually started
+  expect(c.pendingInterrupts).toEqual([]);
+  expect(finished).toBe(1); // resume turn's own clean finish fired turn-finished
+
+  // Now let the old turn's stream finally close.
+  releaseGate();
+  await sendPromise;
+  expect(c.messages.some((m) => m.id === "ghost")).toBe(false); // no leaked fold
+  expect(c.streaming).toBe(false); // resume turn's state is not clobbered
+  expect(finished).toBe(1); // old turn's belated close must not double-fire
+});

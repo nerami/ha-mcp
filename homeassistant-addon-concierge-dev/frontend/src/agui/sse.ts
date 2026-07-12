@@ -38,6 +38,11 @@ export async function* parseSse(
       }
     }
   } finally {
+    // Abandoned streams (consumer breaks out early, e.g. RUN_ERROR or a
+    // thread switch mid-turn) must stop downloading rather than keep
+    // draining in the background. A no-op if the stream already ended
+    // naturally.
+    void reader.cancel().catch(() => {});
     reader.releaseLock();
   }
 }

@@ -24,13 +24,19 @@ export class ChatController implements ReactiveController {
   loading = false;
   pendingInterrupts: Interrupt[] = [];
   error: string | null = null;
-  toolCallsInFlight = new Map<string, { name: string; args: string; result?: string }>();
 
   private runFn: RunFn;
   private loadFn: LoadFn;
   private host: Host;
   /** Bumped by openThread(); a turn started under an older epoch is stale. */
   private turnEpoch = 0;
+  /**
+   * Bumped by runTurn(); distinguishes turns within the SAME epoch (e.g. a
+   * resume started while the prior turn's stream is still draining past
+   * RUN_FINISHED). The epoch alone can't tell send()'s turn apart from the
+   * resolveInterrupt() turn that follows it without a new openThread() call.
+   */
+  private turnSeq = 0;
 
   constructor(host: Host, opts: { runFn?: RunFn; loadFn?: LoadFn } = {}) {
     this.host = host;
@@ -50,7 +56,6 @@ export class ChatController implements ReactiveController {
     this.loading = false;
     this.error = null;
     this.pendingInterrupts = [];
-    this.toolCallsInFlight = new Map();
     if (id === null) {
       this.threadId = crypto.randomUUID();
       this.messages = [];
@@ -108,32 +113,52 @@ export class ChatController implements ReactiveController {
 
   private async runTurn(input: RunAgentInput): Promise<void> {
     const epoch = this.turnEpoch;
+    const turn = ++this.turnSeq;
     this.streaming = true;
     this.error = null;
     this.host.requestUpdate();
     let finishedCleanly = false;
     try {
       for await (const ev of this.runFn(input)) {
-        if (this.turnEpoch !== epoch) break; // thread switched: stale turn, discard
+        // thread switched (epoch) OR a newer turn started on the same
+        // thread while this one drains past RUN_FINISHED (seq): stale,
+        // discard rather than fold into shared state.
+        if (this.turnEpoch !== epoch || this.turnSeq !== turn) break;
         this.fold(ev);
         this.host.requestUpdate();
         if (ev.type === "RUN_ERROR") break; // turn-terminal per contract
-        if (ev.type === "RUN_FINISHED") finishedCleanly = true;
+        if (ev.type === "RUN_FINISHED") {
+          finishedCleanly = true;
+          // Act on RUN_FINISHED, never on stream close: the backend holds
+          // the SSE response open ~1 title-model round-trip past this event
+          // for server-side titling. Unblock the UI right here so approvals
+          // aren't dropped and approval-cards don't go permanently dead
+          // during that window. Deliberately keep draining below (no
+          // break/cancel): disconnecting here could kill the in-flight
+          // titling call server-side.
+          this.streaming = false;
+          this.host.requestUpdate();
+        }
       }
     } catch (e) {
-      if (this.turnEpoch === epoch) {
+      if (this.turnEpoch === epoch && this.turnSeq === turn) {
         this.error = e instanceof Error ? e.message : String(e);
       }
     } finally {
-      // A stale turn must not touch the new thread's state or emit events;
-      // openThread() already reset streaming for the new epoch.
-      if (this.turnEpoch === epoch) {
+      // A stale/superseded turn must not touch a newer turn's state or emit
+      // its events; openThread() already reset streaming for a new epoch,
+      // and a newer same-epoch turn (resume-while-draining) owns `streaming`
+      // once it starts.
+      if (this.turnEpoch === epoch && this.turnSeq === turn) {
         this.streaming = false;
         this.host.requestUpdate();
         // turn-finished fires after ANY RUN_FINISHED — including
         // outcome.type === "interrupt" (the backend generates thread titles
         // even for gated first turns, and consumers refresh titles on this
-        // event) — but never after RUN_ERROR.
+        // event) — but never after RUN_ERROR. Kept here (stream close, not
+        // RUN_FINISHED) deliberately: this is when the title actually
+        // exists server-side, so the refresh timing this event drives is
+        // still correct even though `streaming` itself now unblocks earlier.
         if (finishedCleanly && this.host.dispatchEvent) {
           this.host.dispatchEvent(new CustomEvent("turn-finished"));
         }
@@ -168,7 +193,6 @@ export class ChatController implements ReactiveController {
           ...(parent.toolCalls ?? []),
           { id: ev.toolCallId, type: "function", function: { name: ev.toolCallName, arguments: "" } },
         ];
-        this.toolCallsInFlight.set(ev.toolCallId, { name: ev.toolCallName, args: "" });
         this.messages = [...this.messages];
         break;
       }
@@ -178,8 +202,6 @@ export class ChatController implements ReactiveController {
           .flatMap((m) => m.toolCalls ?? [])
           .find((c) => c.id === ev.toolCallId);
         if (call) call.function.arguments += ev.delta;
-        const inflight = this.toolCallsInFlight.get(ev.toolCallId);
-        if (inflight) inflight.args += ev.delta;
         this.messages = [...this.messages];
         break;
       }
@@ -188,8 +210,6 @@ export class ChatController implements ReactiveController {
           ...this.messages,
           { id: ev.messageId, role: "tool", toolCallId: ev.toolCallId, content: ev.content },
         ];
-        const inflight = this.toolCallsInFlight.get(ev.toolCallId);
-        if (inflight) inflight.result = ev.content;
         break;
       }
       case "RUN_FINISHED":
