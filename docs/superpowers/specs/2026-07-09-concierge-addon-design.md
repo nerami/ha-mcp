@@ -270,7 +270,8 @@ Skill discovery works as follows:
 
 ### 6.4 Components
 
-- Thread sidebar (list, new, rename, delete).
+- Thread sidebar (list, new, delete; rename UI deferred past v1 — the
+  endpoint and controller plumbing ship ready).
 - Message list + streaming assistant renderer (Markdown).
 - Tool-call cards (name, args, result state).
 - HITL approval control (approve / deny; the wire contract supports

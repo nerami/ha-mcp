@@ -129,3 +129,37 @@ Concrete, verified gaps to close during packaging — not blocking, but real:
   collide after normalization will silently produce two toolsets registered
   under the same prefix with no warning; `resolve_skills` should dedupe or
   warn.
+
+## Plan 2 (frontend) handoff — for Plan 3 packaging
+
+- **Image build.** The Dockerfile runs `npm ci && npm run build` in
+  `frontend/` and points `CONCIERGE_STATIC_DIR` at the resulting `dist/`
+  path. A missing `dist/index.html` is a startup gate on the backend side —
+  it logs a single WARNING and then 404s every request rather than crashing
+  — so Plan 3 must treat a missing or empty `dist/` as a BUILD failure, not
+  a runtime condition to shrug off.
+- **Ingress.** The app depends on relative paths plus Vite's `base: ""`;
+  verify SSE streams unbuffered through Supervisor ingress, and that
+  ingress/proxy read-timeouts tolerate long-lived responses — the
+  connection stays open past `RUN_FINISHED` for server-side titling, and
+  agent turns in general can run for minutes.
+- **Security constraints** from the Plan 3 security note above still bind
+  unchanged: no port mapping, no `host_network`, ingress is the sole auth
+  boundary, and the ingress-source-filtering / secret-path question is still
+  open.
+- **Known v1 limitation: pending HITL interrupts don't survive page
+  reload/thread reopen.** There is no re-fetch endpoint for a thread's
+  pending interrupts, and `ChatController.openThread` clears
+  `pendingInterrupts` on every open. A user who refreshes the page (or
+  navigates away and back) mid-approval loses the approval card and must
+  re-ask the agent to retry the action.
+- **Static responses use FileResponse defaults.** Hashed-asset cache
+  headers (long-lived immutable caching for content-hashed JS/CSS) are a
+  later tweak, not done in Plan 2 — but `index.html` itself must stay
+  revalidated (no long-lived caching) since it's the one asset without a
+  content hash in its URL.
+- **Thread rename is deferred past v1 — but the plumbing shipped.** By
+  decision at the Plan 2 final review, `PATCH /threads/{id}`, the
+  `renameThread` API function, and `ThreadsController.rename` all ship
+  tested and ready. Only the sidebar affordance (a rename button/input) is
+  absent from the UI. Wiring it up is a small addition, not new plumbing.
