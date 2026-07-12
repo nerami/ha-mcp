@@ -78,7 +78,8 @@ export function buildRunInput(
 }
 
 // All URLs are RELATIVE: under Supervisor ingress the app lives beneath a
-// dynamic path prefix, so "/agui" would escape it and 404.
+// dynamic path prefix, so an absolute /agui path would escape the ingress
+// prefix and 404.
 export async function* postRun(
   input: RunAgentInput,
   fetchFn: FetchFn = defaultFetch,

@@ -17,7 +17,7 @@ static files. Speaks the AG-UI protocol over SSE — see
 
 ## Checks
 
-    npm run test        # vitest (happy-dom)
+    npm run test        # vitest (jsdom)
     npm run lint        # eslint
     npm run typecheck   # tsc --noEmit
     npm run build       # tsc + vite build -> dist/
