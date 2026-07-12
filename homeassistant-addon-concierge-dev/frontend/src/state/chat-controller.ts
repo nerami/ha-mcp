@@ -70,6 +70,16 @@ export class ChatController implements ReactiveController {
         if (this.turnEpoch !== epoch) return; // superseded by a newer open
         this.threadId = id;
         this.messages = loaded;
+      } catch (e) {
+        // Epoch-guarded: a superseded open's rejection must not stomp the
+        // winning open's error. Never rethrow — concierge-app's onSelect
+        // awaits openThread() with no try/catch, so an unhandled rejection
+        // here would surface as an unhandled promise rejection instead of
+        // the error banner. threadId is already null from above, so a
+        // failed rehydration leaves the thread unopened rather than half-open.
+        if (this.turnEpoch === epoch) {
+          this.error = e instanceof Error ? e.message : String(e);
+        }
       } finally {
         // Epoch-guarded: a superseded open's settle (resolve OR reject) must
         // not clear the winning open's loading flag. requestUpdate here so a

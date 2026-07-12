@@ -224,14 +224,35 @@ it("a superseded open's settle does not clear the winner's loading", async () =>
   expect(c.loading).toBe(false);
 });
 
-it("clears loading when the rehydration load rejects", async () => {
+it("surfaces a rehydration failure in `error` instead of rejecting", async () => {
   const loadFn = async (): Promise<ChatMessage[]> => {
     throw new Error("down");
   };
   const host = new FakeHost();
   const c = new ChatController(host as never, { runFn: scripted().runFn, loadFn });
-  await expect(c.openThread("t9")).rejects.toThrow("down");
+  // Must NOT reject: concierge-app's onSelect awaits openThread() with no
+  // try/catch, so a rejection here would be an unhandled promise rejection.
+  await expect(c.openThread("t9")).resolves.toBeUndefined();
+  expect(c.error).toBe("down");
+  expect(c.threadId).toBeNull();
   expect(c.loading).toBe(false);
+  expect(c.streaming).toBe(false);
+});
+
+it("a superseded open's rejection does not clobber the winning open's error", async () => {
+  const resolvers = new Map<string, { reject: (e: Error) => void }>();
+  const loadFn = (id: string) =>
+    new Promise<ChatMessage[]>((_resolve, reject) => resolvers.set(id, { reject }));
+  const host = new FakeHost();
+  const c = new ChatController(host as never, { runFn: scripted().runFn, loadFn });
+  const openA = c.openThread("A"); // superseded before it settles
+  const openB = c.openThread("B"); // the winner
+  resolvers.get("A")!.reject(new Error("stale failure"));
+  await openA; // must not throw even though it's the superseded turn
+  expect(c.error).toBeNull(); // A's rejection must not surface
+  resolvers.get("B")!.reject(new Error("current failure"));
+  await openB;
+  expect(c.error).toBe("current failure"); // B's own rejection does surface
 });
 
 it("send() during rehydration is a no-op", async () => {
