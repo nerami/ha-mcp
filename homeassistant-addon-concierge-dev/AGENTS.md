@@ -21,6 +21,14 @@ therefore has **no `ports:` and no `host_network:`**; the UI is reachable only
 through Supervisor's ingress proxy. `homeassistant-addon-concierge-dev/backend/tests/test_addon_manifest.py`
 fails if any of these invariants regress.
 
+**Hassio-network reachability (accepted for dev; stable must re-decide).** On the
+shared hassio docker network, any other add-on container can reach `:8098` and
+drive the unauthenticated `/agui` (including approving destructive tools), even
+with no host port published. For the dev channel this is an **accepted**
+boundary; the Plan-4 stable promote **MUST** consciously re-decide it —
+ingress-source filtering or a secret path segment, mirroring ha-mcp's
+`MCP_SECRET_PATH`.
+
 ## Options ⇔ Settings
 `config.yaml` options are the operator-facing subset of `concierge.config.Settings`
 (`ha_url`/`ha_token`/`data_dir`/`host`/`port` are supplied by the runtime, not

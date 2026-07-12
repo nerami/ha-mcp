@@ -72,7 +72,10 @@ def main() -> None:
 
     token = os.environ.get("SUPERVISOR_TOKEN")
     if not token:
-        _log("SUPERVISOR_TOKEN not set — HA-backed tools will be unauthenticated")
+        _log(
+            "SUPERVISOR_TOKEN not set — bundled ha-mcp requires a non-empty HA "
+            "token and will fail to start without it (normal only outside Supervisor)"
+        )
 
     os.environ.update(build_env(options, token))
     _log(f"launching concierge (provider={os.environ.get('CONCIERGE_PROVIDER', 'anthropic')})")

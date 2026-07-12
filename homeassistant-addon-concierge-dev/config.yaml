@@ -21,6 +21,11 @@ panel_icon: mdi:robot-happy
 panel_title: "Concierge (Dev)"
 # The add-on talks to HA via the Supervisor core proxy using its own token.
 homeassistant_api: true
+# hassio_api: retained for the bundled ha-mcp's Supervisor-backed tools (add-on
+# management). Concierge's own code never calls the Supervisor API directly
+# (skills are reached over DNS). Flagged for a least-privilege review + live
+# verification in Plan 4 — confirm what the bundled ha-mcp actually needs on the
+# dev channel before promoting to stable.
 hassio_api: true
 options:
   provider: "anthropic"
