@@ -19,10 +19,20 @@ cat > "$DATA/options.json" <<'JSON'
  "base_url":"","auto_run_tools":true,"skills":[],"tracing":false,"log_level":"info"}
 JSON
 
-docker build --build-arg BUILD_VERSION=0.1.0.dev1 --build-arg BUILD_ARCH=amd64 \
+# --no-cache: the backend package version is a static 0.0.0 placeholder, so uv's
+# build cache can serve a stale wheel after a backend edit; rebuild from scratch
+# so the smoke always validates the committed source (correctness over speed).
+docker build --no-cache --build-arg BUILD_VERSION=0.1.0.dev1 --build-arg BUILD_ARCH=amd64 \
   -t "$IMAGE" "$ADDON_DIR" >/dev/null
 
-docker run -d --name "$NAME" -p 8098:8098 -v "$DATA:/data" "$IMAGE" >/dev/null
+# SUPERVISOR_TOKEN: Supervisor always injects this for hassio_api/homeassistant_api
+# add-ons; the smoke mirrors that. run.py maps it to CONCIERGE_HA_TOKEN, which the
+# bundled ha-mcp needs non-empty to pass its stdio standard-mode validation and
+# start. A bogus non-empty token is fine — Plan 1 Task 11 proved ha-mcp lists
+# tools with an unreachable URL + fake token without connecting, and this smoke
+# makes no HA-backed calls (/ and /threads don't touch HA).
+docker run -d --name "$NAME" -p 8098:8098 -v "$DATA:/data" \
+  -e SUPERVISOR_TOKEN=smoke-fake-token "$IMAGE" >/dev/null
 
 # Wait for the server (startup spawns the bundled ha-mcp stdio subprocess).
 for i in $(seq 1 30); do
