@@ -33,5 +33,5 @@ on every change. Only the **dev** flavor exists today. The **stable** flavor
 (`homeassistant-addon-concierge/`, slug `ha_mcp_concierge`) and the
 dev-first/promote automation land in **Plan 4** (mirroring the Webhook Proxy
 add-on). Because Concierge installs no custom component, the dev↔stable
-transform is config-identity only — the `backend/`/`frontend/` code is byte
--identical across flavors (no token rename).
+transform is config-identity only — the `backend/`/`frontend/` code is
+byte-identical across flavors (no token rename).

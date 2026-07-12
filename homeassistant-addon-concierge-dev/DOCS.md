@@ -3,7 +3,8 @@
 A self-hosted chat concierge for your smart home. It's a conversational
 assistant — backed by an LLM of your choice and the full [ha-mcp](https://github.com/homeassistant-ai/ha-mcp)
 tool set — that runs entirely inside your Home Assistant instance. No external
-agent, cloud relay, or separate account is required.
+MCP agent or cloud relay to wire up — you bring an LLM provider API key (or
+point it at a local model) and open the chat from your Home Assistant app.
 
 > **Dev channel.** This is the experimental/unstable build, used to test
 > changes before they reach the stable add-on. Expect rough edges and
