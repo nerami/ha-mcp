@@ -1,11 +1,16 @@
 import { LitElement, css, html } from "lit";
-import { customElement, property } from "lit/decorators.js";
+import { customElement, property, state } from "lit/decorators.js";
 import type { ThreadMeta } from "../agui/api";
 
 @customElement("thread-sidebar")
 export class ThreadSidebar extends LitElement {
   @property({ attribute: false }) threads: ThreadMeta[] = [];
   @property() activeId: string | null = null;
+
+  // Id of the thread whose title is being edited inline, or null when no row
+  // is in edit mode. `draftTitle` is the in-progress input value.
+  @state() private editingId: string | null = null;
+  @state() private draftTitle = "";
 
   static styles = css`
     nav {
@@ -41,7 +46,8 @@ export class ThreadSidebar extends LitElement {
       font-weight: 600;
       color: var(--c-primary);
     }
-    .delete {
+    .delete,
+    .rename {
       padding: 0 4px;
       color: var(--c-text-secondary);
     }
@@ -56,6 +62,20 @@ export class ThreadSidebar extends LitElement {
       text-overflow: ellipsis;
       white-space: nowrap;
     }
+    .rename-input {
+      flex: 1;
+      min-width: 0;
+      font: inherit;
+      color: var(--c-text);
+      background: var(--c-bg);
+      border: 1px solid var(--c-primary);
+      border-radius: 8px;
+      padding: 7px 9px;
+    }
+    .save-rename {
+      padding: 0 4px;
+      color: var(--c-primary);
+    }
   `;
 
   private emit(name: string, id?: string): void {
@@ -68,31 +88,112 @@ export class ThreadSidebar extends LitElement {
     );
   }
 
+  private startRename(t: ThreadMeta): void {
+    this.editingId = t.id;
+    this.draftTitle = t.title ?? "";
+  }
+
+  private cancelRename(): void {
+    this.editingId = null;
+    this.draftTitle = "";
+  }
+
+  // Confirm the edit. A blank/whitespace-only title is discarded (no event),
+  // matching the "empty titles are not submitted" rule.
+  private commitRename(id: string): void {
+    if (this.editingId !== id) return;
+    const title = this.draftTitle.trim();
+    this.editingId = null;
+    this.draftTitle = "";
+    if (title) {
+      this.dispatchEvent(
+        new CustomEvent("rename-thread", {
+          detail: { id, title },
+          bubbles: true,
+          composed: true,
+        }),
+      );
+    }
+  }
+
+  private onEditKeydown(e: KeyboardEvent, id: string): void {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      this.commitRename(id);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      this.cancelRename();
+    }
+  }
+
+  // Focus (and select) the input when a row enters edit mode. Guarded so it
+  // does not re-select on every keystroke re-render.
+  updated(): void {
+    if (this.editingId === null) return;
+    const input =
+      this.shadowRoot?.querySelector<HTMLInputElement>(".rename-input");
+    if (input && this.shadowRoot?.activeElement !== input) {
+      input.focus();
+      input.select();
+    }
+  }
+
+  private renderRow(t: ThreadMeta) {
+    if (t.id === this.editingId) {
+      return html`
+        <div class="row">
+          <input
+            class="rename-input"
+            aria-label="Conversation title"
+            .value=${this.draftTitle}
+            @input=${(e: Event) =>
+              (this.draftTitle = (e.target as HTMLInputElement).value)}
+            @keydown=${(e: KeyboardEvent) => this.onEditKeydown(e, t.id)}
+            @blur=${() => this.commitRename(t.id)}
+          />
+          <button
+            class="save-rename"
+            aria-label="Save conversation name"
+            @click=${() => this.commitRename(t.id)}
+          >
+            ✓
+          </button>
+        </div>
+      `;
+    }
+    return html`
+      <div class="row">
+        <button
+          class="thread ${t.id === this.activeId ? "active" : ""}"
+          @click=${() => this.emit("select-thread", t.id)}
+        >
+          ${t.title ?? "Untitled"}
+        </button>
+        <button
+          class="rename"
+          aria-label="Rename conversation"
+          @click=${() => this.startRename(t)}
+        >
+          ✎
+        </button>
+        <button
+          class="delete"
+          aria-label="Delete conversation"
+          @click=${() => this.emit("delete-thread", t.id)}
+        >
+          ✕
+        </button>
+      </div>
+    `;
+  }
+
   render() {
     return html`
       <nav aria-label="Conversations">
         <button class="new-thread" @click=${() => this.emit("new-thread")}>
           ＋ New chat
         </button>
-        ${this.threads.map(
-          (t) => html`
-            <div class="row">
-              <button
-                class="thread ${t.id === this.activeId ? "active" : ""}"
-                @click=${() => this.emit("select-thread", t.id)}
-              >
-                ${t.title ?? "Untitled"}
-              </button>
-              <button
-                class="delete"
-                aria-label="Delete conversation"
-                @click=${() => this.emit("delete-thread", t.id)}
-              >
-                ✕
-              </button>
-            </div>
-          `,
-        )}
+        ${this.threads.map((t) => this.renderRow(t))}
       </nav>
     `;
   }

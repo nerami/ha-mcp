@@ -35,9 +35,11 @@ async function mount() {
   panel.openThread = openThread;
   const refresh = vi.fn(async () => {});
   const remove = vi.fn(async (_id: string) => {});
+  const rename = vi.fn(async (_id: string, _title: string) => {});
   app.threads.refresh = refresh;
   app.threads.remove = remove;
-  return { app, panel, sidebar, openThread, refresh, remove };
+  app.threads.rename = rename;
+  return { app, panel, sidebar, openThread, refresh, remove, rename };
 }
 
 it("select-thread opens the thread in the chat panel", async () => {
@@ -82,6 +84,17 @@ it("deleting a NON-active thread removes it without resetting the chat", async (
   await flush();
   expect(remove).toHaveBeenCalledWith("t2");
   expect(openThread.mock.calls).toEqual([["t1"]]); // no reset
+});
+
+it("rename-thread calls the threads controller's rename with the new title", async () => {
+  const { sidebar, rename } = await mount();
+  sidebar.dispatchEvent(
+    new CustomEvent("rename-thread", {
+      detail: { id: "t1", title: "Renamed" },
+    }),
+  );
+  await flush();
+  expect(rename).toHaveBeenCalledWith("t1", "Renamed");
 });
 
 it("turn-finished on the chat panel refreshes the thread list", async () => {

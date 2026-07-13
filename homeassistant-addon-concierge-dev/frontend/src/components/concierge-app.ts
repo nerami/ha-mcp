@@ -69,6 +69,14 @@ export class ConciergeApp extends LitElement {
     if (this.activeId === id) await this.onNew();
   }
 
+  private async onRename(e: Event): Promise<void> {
+    const { id, title } = (e as CustomEvent).detail as {
+      id: string;
+      title: string;
+    };
+    await this.threads.rename(id, title);
+  }
+
   private toggleTheme(): void {
     applyTheme(currentTheme() === "dark" ? "light" : "dark");
     this.requestUpdate();
@@ -86,6 +94,7 @@ export class ConciergeApp extends LitElement {
         @select-thread=${this.onSelect}
         @new-thread=${this.onNew}
         @delete-thread=${this.onDelete}
+        @rename-thread=${this.onRename}
       ></thread-sidebar>
       <div class="content">
         <header>
