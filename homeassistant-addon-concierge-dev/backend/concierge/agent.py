@@ -47,6 +47,12 @@ def build_hamcp_toolset(settings: Settings) -> AbstractToolset:
         **os.environ,
         "HOMEASSISTANT_URL": settings.ha_url,
         "HOMEASSISTANT_TOKEN": settings.ha_token,
+        # Concierge serves its own UI; the bundled ha-mcp is a pure stdio tool
+        # backend. Disable ha-mcp's stdio settings-UI sidecar — spawned fresh on
+        # a real device it wedges the stdio MCP handshake (the sidecar child
+        # holds/pollutes the stdout JSON-RPC channel), so the client init hangs
+        # and the agent never starts. We never expose that UI, so skip it.
+        "HA_MCP_DISABLE_SETTINGS_UI": "1",
     }
     transport = StdioTransport(command="ha-mcp", args=[], env=env)
     return _gated(MCPToolset(transport, init_timeout=HAMCP_INIT_TIMEOUT), settings)

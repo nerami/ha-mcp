@@ -37,6 +37,23 @@ def test_hamcp_toolset_uses_generous_init_timeout() -> None:
     assert HAMCP_INIT_TIMEOUT >= 30, "too tight for a cold aarch64 ha-mcp start"
 
 
+def test_hamcp_toolset_disables_settings_ui_sidecar() -> None:
+    """The bundled ha-mcp must not spawn its stdio settings-UI sidecar.
+
+    Spawned fresh on a real device the sidecar wedges the stdio MCP handshake
+    (its child holds/pollutes the stdout JSON-RPC channel), hanging startup —
+    reproduced live on an HA Green. Concierge serves its own UI, so we pass
+    HA_MCP_DISABLE_SETTINGS_UI to skip it.
+    """
+    with (
+        patch("concierge.agent.MCPToolset"),
+        patch("concierge.agent.StdioTransport") as mock_transport,
+    ):
+        build_hamcp_toolset(settings())
+    _, kwargs = mock_transport.call_args
+    assert kwargs["env"].get("HA_MCP_DISABLE_SETTINGS_UI") == "1"
+
+
 async def test_hamcp_lists_tools_with_camel_case_annotations() -> None:
     # auto_run_tools=True -> raw MCPToolset (no approval wrapper), so we can
     # use the toolset's own client surface directly.
