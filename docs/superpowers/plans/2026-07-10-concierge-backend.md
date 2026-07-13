@@ -1,4 +1,4 @@
-# Concierge Backend Implementation Plan (Plan 1 of 3)
+# Concierge Backend Implementation Plan (Plan 1 of 4)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3.13 · `pydantic-ai-slim[ag-ui,mcp]==2.8.0` · `ha-mcp==7.12.0` · FastAPI + uvicorn · pydantic-settings · SQLite (WAL) · pytest + pytest-asyncio.
 
-**Spec:** `docs/superpowers/specs/2026-07-09-concierge-addon-design.md` (approved). Plan 2 = Lit frontend; Plan 3 = addon packaging/CI. This plan yields a standalone, testable, runnable service.
+**Spec:** `docs/superpowers/specs/2026-07-09-concierge-addon-design.md` (approved). Plan 2 = Lit frontend; Plan 3 = addon packaging; Plan 4 = release CI/ingress guard. This plan yields a standalone, testable, runnable service.
 
 ## Global Constraints
 

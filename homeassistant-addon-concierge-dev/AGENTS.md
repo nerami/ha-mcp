@@ -15,6 +15,53 @@ discovered over the Supervisor DNS network. It installs nothing into HA Core.
 - `backend/` — the Pydantic AI service (own uv project; Plan 1).
 - `frontend/` — the Lit SPA (own npm project; Plan 2). Built into the image.
 
+## Developing
+
+Two independent subprojects with their own toolchains — neither is covered by
+the root `src/` lint or the root `tests/` (testcontainers) suite.
+
+**Backend** (run from `homeassistant-addon-concierge-dev/backend/`):
+```bash
+uv sync --group dev
+uv run pytest
+uv run ruff check .
+uv run mypy concierge/
+```
+Style: ruff line-length 88, mypy `disallow_untyped_defs`, `X | None` unions, no
+broad `except` inside polling loops. Use **Pydantic AI v2 APIs only**:
+`MCPToolset` + `fastmcp` transports (never the deprecated `MCPServerStdio` /
+`MCPServerStreamableHTTP`); the `.prefixed()` / `.approval_required()`
+combinators; `DeferredToolRequests` / `DeferredToolResults` (never
+`DeferredToolCalls`).
+
+**Frontend** (run from `homeassistant-addon-concierge-dev/frontend/`):
+```bash
+npm install
+npx vitest run
+npm run lint
+npm run typecheck
+npm run build
+```
+Constraints: runtime deps are closed to `lit`, `marked`, `dompurify` (no React,
+no `@ag-ui/client` / RxJS); **all API paths are RELATIVE** (`./agui`,
+`./threads`) because the app is served under Supervisor ingress's dynamic
+prefix.
+
+Pre-commit (lefthook) runs the `mypy-concierge` and `frontend-concierge` jobs
+scoped to these directories.
+
+## References
+
+- `docs/superpowers/notes/2026-07-10-backend-handoff.md` — the verified AG-UI
+  wire contract (SSE events, HITL resume shape, thread rehydration).
+- `homeassistant-addon-concierge-dev/frontend/README.md` — frontend dev
+  workflow (Vite dev proxy).
+- `docs/superpowers/notes/2026-07-12-packaging-handoff.md` — packaging facts,
+  the `hassio_api` least-privilege review, and the frozen backend hardening
+  backlog (known gaps in `agent.py` / `skills.py`).
+- `docs/superpowers/specs/2026-07-09-concierge-addon-design.md` — the design
+  spec.
+
 ## Security invariants (do not weaken)
 `/agui` has no authentication — ingress is the auth boundary. The manifest
 therefore has **no `ports:` and no `host_network:`**; the UI is reachable only

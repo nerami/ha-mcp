@@ -695,6 +695,21 @@ edited directly by a PR in regular operation; every change (code *and* docs)
 lands on `homeassistant-addon-webhook-proxy-dev/` with a version bump, and
 stable is updated only via the manual promote workflow.
 
+### Concierge add-on: dev-first, promote-only
+
+**Any work on the Concierge add-on must start by reading
+[`homeassistant-addon-concierge-dev/AGENTS.md`](homeassistant-addon-concierge-dev/AGENTS.md)**
+— it owns the full flow (flavors, versioning guard, promotion, testing). The
+Concierge add-on is a **separate uv project**
+(`homeassistant-addon-concierge-dev/backend/`) **and** a separate npm project
+(`homeassistant-addon-concierge-dev/frontend/`) — *not* part of the root `src/`
+linting or the root `tests/` (testcontainers) project; each has its own
+test/lint cycle. The short version: `homeassistant-addon-concierge-dev/` (dev,
+slug `ha_mcp_concierge_dev`) is the only flavor edited directly; stable
+`homeassistant-addon-concierge/` (slug `ha_mcp_concierge`) is produced only by
+the promote workflow. Because it ships no custom component, the dev→stable
+transform is config-identity-only.
+
 **Docs**: https://developers.home-assistant.io/docs/add-ons
 
 ## API Research

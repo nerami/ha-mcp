@@ -224,6 +224,16 @@ ha-mcp entrypoints (from `pyproject.toml`): `ha-mcp` (stdio, `__main__:main`),
 
 ## 8. Session persistence — `ModelMessagesTypeAdapter` / `message_history`
 
+> **SUPERSEDED (design decision):** The shipped Concierge design does **not**
+> use `ModelMessagesTypeAdapter` / `message_history`. Instead it follows the
+> AG-UI "client-owns-messages" model — each `RunAgentInput` carries the thread's
+> messages, and the backend persists AG-UI wire-format (camelCase) message
+> dicts, teeing the event stream into SQLite for cross-session rehydration. The
+> `ModelMessagesTypeAdapter` verification below is retained for historical
+> record only. See `docs/superpowers/plans/2026-07-10-concierge-backend.md`
+> (Global Constraints: "No `ModelMessagesTypeAdapter`") and
+> `docs/superpowers/notes/2026-07-10-backend-handoff.md`.
+
 **Verdict: CONFIRMED.**
 
 - `from pydantic_ai import ModelMessagesTypeAdapter, ModelMessage`. Serialize with
