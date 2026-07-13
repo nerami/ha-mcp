@@ -5,12 +5,14 @@ This is the one live check the design flagged (spec §5.5/§11.3): the exact
 key casing of MCP annotations as surfaced to our gating callback.
 """
 
+from unittest.mock import patch
+
 from pydantic_ai import Agent, DeferredToolRequests
 from pydantic_ai.mcp import MCPToolset
 from pydantic_ai.models.test import TestModel
 from pydantic_ai.tools import ToolDefinition
 
-from concierge.agent import build_hamcp_toolset
+from concierge.agent import HAMCP_INIT_TIMEOUT, build_hamcp_toolset
 from concierge.config import Settings
 
 
@@ -18,6 +20,21 @@ def settings() -> Settings:
     return Settings(
         ha_url="http://127.0.0.1:1", ha_token="fake-token", auto_run_tools=True
     )
+
+
+def test_hamcp_toolset_uses_generous_init_timeout() -> None:
+    """The stdio handshake must tolerate a cold aarch64 start.
+
+    fastmcp's default client init timeout is short; a cold ha-mcp import on a
+    slow target overruns it and the agent fails to start (the failure mode
+    that only surfaces on-device, never on fast x86 CI). Lock in the explicit
+    generous timeout so it can't silently regress to the default.
+    """
+    with patch("concierge.agent.MCPToolset") as mock_toolset:
+        build_hamcp_toolset(settings())
+    _, kwargs = mock_toolset.call_args
+    assert kwargs.get("init_timeout") == HAMCP_INIT_TIMEOUT
+    assert HAMCP_INIT_TIMEOUT >= 30, "too tight for a cold aarch64 ha-mcp start"
 
 
 async def test_hamcp_lists_tools_with_camel_case_annotations() -> None:
