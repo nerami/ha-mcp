@@ -57,7 +57,67 @@ export class ChatPanel extends LitElement {
       color: var(--c-error);
       padding: 8px 16px;
     }
+    .thinking {
+      display: inline-flex;
+      gap: 5px;
+      align-items: center;
+      width: fit-content;
+      background: var(--c-surface);
+      border: 1px solid var(--c-divider);
+      border-radius: var(--c-radius, 12px);
+      padding: 12px 14px;
+      margin: 4px 0;
+    }
+    .thinking .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--c-text);
+      opacity: 0.3;
+      animation: thinking-pulse 1.2s infinite ease-in-out;
+    }
+    .thinking .dot:nth-child(2) {
+      animation-delay: 0.2s;
+    }
+    .thinking .dot:nth-child(3) {
+      animation-delay: 0.4s;
+    }
+    @keyframes thinking-pulse {
+      0%,
+      60%,
+      100% {
+        opacity: 0.25;
+        transform: translateY(0);
+      }
+      30% {
+        opacity: 0.85;
+        transform: translateY(-3px);
+      }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .thinking .dot {
+        animation: none;
+        opacity: 0.5;
+      }
+    }
   `;
+
+  /**
+   * Show a "thinking" affordance during the turn's dead air: after the user
+   * sends (or a tool returns) and before the assistant is visibly producing
+   * text or a tool call. Hides the moment real assistant output appears (which
+   * carries its own progress) and while an approval is pending (streaming is
+   * already false there — the approval-card is the affordance).
+   */
+  private isThinking(): boolean {
+    const c = this.controller;
+    if (!c.streaming) return false;
+    const last = c.messages[c.messages.length - 1];
+    const producing =
+      last?.role === "assistant" &&
+      ((last.content?.length ?? 0) > 0 || (last.toolCalls?.length ?? 0) > 0);
+    return !producing;
+  }
 
   async openThread(id: string | null): Promise<void> {
     await this.controller.openThread(id);
@@ -118,6 +178,11 @@ export class ChatPanel extends LitElement {
               .toolArgs=${info.args}
             ></approval-card>`;
           })}
+          ${this.isThinking()
+            ? html`<div class="thinking" role="status" aria-label="Concierge is thinking">
+                <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+              </div>`
+            : nothing}
         </div>
         ${c.error ? html`<p class="error" role="alert">${c.error}</p>` : nothing}
         <form @submit=${this.onSubmit}>

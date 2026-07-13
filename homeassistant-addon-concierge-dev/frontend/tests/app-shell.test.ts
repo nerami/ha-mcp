@@ -64,6 +64,39 @@ it("chat panel renders composer, streams a turn, shows approval card on interrup
   el.remove();
 });
 
+it("shows a thinking indicator during dead air, hides once output arrives", async () => {
+  const el = document.createElement("chat-panel") as ChatPanel;
+  document.body.appendChild(el);
+  let release!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  // Hold the turn open with no assistant output yet — the "thinking" window.
+  el.controller.setRunFnForTests(async function* () {
+    yield { type: "RUN_STARTED" } as const;
+    await gate;
+    yield { type: "TEXT_MESSAGE_START", messageId: "a1" } as const;
+    yield { type: "TEXT_MESSAGE_CONTENT", messageId: "a1", delta: "Hi!" } as const;
+    yield { type: "RUN_FINISHED" } as const;
+  });
+  await el.controller.openThread(null);
+  const sending = el.controller.send("hello"); // paused at the gate, do not await
+  await el.updateComplete;
+  // Dead air: streaming, only the user message present -> indicator visible.
+  expect(el.shadowRoot!.querySelector(".thinking")).not.toBeNull();
+  expect(el.shadowRoot!.querySelector('[role="status"]')).not.toBeNull();
+
+  release();
+  await sending;
+  await el.updateComplete;
+  // Assistant output has arrived and the turn finished -> indicator gone.
+  expect(el.shadowRoot!.querySelector(".thinking")).toBeNull();
+  expect(
+    el.controller.messages.some(
+      (m) => m.role === "assistant" && m.content.includes("Hi!"),
+    ),
+  ).toBe(true);
+  el.remove();
+});
+
 it("composer is gated while a thread rehydrates: no clear, no run", async () => {
   // Gate the default loadFn (getThreadMessages) at the fetch layer.
   let releaseLoad!: (r: Response) => void;
