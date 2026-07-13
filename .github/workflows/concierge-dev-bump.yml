@@ -1,0 +1,59 @@
+name: Concierge Dev — Bump Version
+
+on:
+  workflow_dispatch:
+    inputs:
+      level:
+        description: "Which part to bump"
+        type: choice
+        default: dev
+        options: [dev, patch, minor, major]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Bump dev version in config.yaml
+        env:
+          LEVEL: ${{ inputs.level }}
+        run: |
+          set -euo pipefail
+          python3 - "$LEVEL" <<'PY'
+          import re, sys, pathlib
+          level = sys.argv[1]
+          cfg = pathlib.Path("homeassistant-addon-concierge-dev/config.yaml")
+          text = cfg.read_text()
+          cur = re.search(r'^version:\s*"([^"]+)"', text, re.M).group(1)
+          m = re.match(r"^(\d+)\.(\d+)\.(\d+)(?:\.dev(\d+))?$", cur)
+          if not m: sys.exit(f"unparseable version: {cur!r}")
+          major, minor, patch = int(m[1]), int(m[2]), int(m[3])
+          dev = int(m[4]) if m[4] is not None else 0
+          new = {"dev": f"{major}.{minor}.{patch}.dev{dev+1}",
+                 "patch": f"{major}.{minor}.{patch+1}.dev1",
+                 "minor": f"{major}.{minor+1}.0.dev1",
+                 "major": f"{major+1}.0.0.dev1"}[level]
+          cfg.write_text(re.sub(r'^version:\s*"[^"]+"', f'version: "{new}"', text, count=1, flags=re.M))
+          print(f"bumped {cur} -> {new}")
+          PY
+      - name: Open a PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_REF: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          NEW=$(python3 -c 'import re;print(re.search(r"^version:\s*\"([^\"]+)\"",open("homeassistant-addon-concierge-dev/config.yaml").read(),re.M).group(1))')
+          BRANCH="chore/concierge-dev-bump-$NEW"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add homeassistant-addon-concierge-dev/config.yaml
+          git commit -m "chore(addon-dev): bump concierge-dev to $NEW"
+          git push -u origin "$BRANCH"
+          gh pr create --draft --base "$BASE_REF" --head "$BRANCH" \
+            --title "chore(addon-dev): bump concierge-dev to $NEW" \
+            --body "Manual dev version bump to \`$NEW\`."
