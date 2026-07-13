@@ -59,6 +59,51 @@ def test_resolve_supervisor_ips_collects_addresses(monkeypatch) -> None:
     assert ingress_guard.resolve_supervisor_ips() == frozenset({"172.30.32.2"})
 
 
+async def test_websocket_rejected_sends_close_for_non_allowed_peer() -> None:
+    # Drives the guard directly with a hand-built websocket scope: proves a
+    # rejected websocket peer gets an ASGI websocket.close, not an HTTP
+    # JSONResponse (which would be invalid on a websocket scope).
+    async def inner_app(scope, receive, send):  # type: ignore[no-untyped-def]
+        raise AssertionError("inner app must not be invoked for a rejected peer")
+
+    guard = ingress_guard._IngressGuard(inner_app, allowed_ips=frozenset({"172.30.32.2"}))
+
+    sent: list[dict] = []
+
+    async def send(message: dict) -> None:  # type: ignore[no-untyped-def]
+        sent.append(message)
+
+    async def receive() -> dict:  # type: ignore[no-untyped-def]
+        raise AssertionError("receive should not be consumed by the guard")
+
+    scope = {"type": "websocket", "client": ("10.0.0.5", 12345), "path": "/ws"}
+    await guard(scope, receive, send)
+
+    assert sent == [{"type": "websocket.close", "code": 1008}]
+
+
+async def test_websocket_allowed_peer_passes_through() -> None:
+    # Same hand-built-scope style as above, but for an allowed peer: the guard
+    # must delegate to the wrapped app untouched (no close, no response sent).
+    calls: list[dict] = []
+
+    async def inner_app(scope, receive, send):  # type: ignore[no-untyped-def]
+        calls.append(scope)
+
+    guard = ingress_guard._IngressGuard(inner_app, allowed_ips=frozenset({"172.30.32.2"}))
+
+    async def send(message: dict) -> None:  # type: ignore[no-untyped-def]
+        raise AssertionError("guard must not send anything for an allowed peer")
+
+    async def receive() -> dict:  # type: ignore[no-untyped-def]
+        raise AssertionError("guard must not consume receive for an allowed peer")
+
+    scope = {"type": "websocket", "client": ("172.30.32.2", 12345), "path": "/ws"}
+    await guard(scope, receive, send)
+
+    assert calls == [scope]
+
+
 async def test_streaming_response_passes_through_unbuffered() -> None:
     # Proves the pure-ASGI guard delegates the stream instead of collecting it:
     # chunks arrive one at a time, in order, through the guarded app.

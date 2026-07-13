@@ -50,8 +50,9 @@ class _IngressGuard:
         self.allowed_ips = allowed_ips
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        # Only gate HTTP; pass lifespan/websocket straight through untouched.
-        if scope["type"] == "http" and self.allowed_ips:
+        # Gate both HTTP and websocket (both carry a real scope["client"] peer);
+        # pass lifespan straight through untouched — it has no peer and must pass.
+        if scope["type"] in ("http", "websocket") and self.allowed_ips:
             client = scope.get("client")
             peer = client[0] if client else None
             if peer not in self.allowed_ips:
@@ -61,10 +62,13 @@ class _IngressGuard:
                     scope.get("path"),
                     peer,
                 )
-                await JSONResponse(
-                    {"error": "forbidden: reach this add-on through Home Assistant"},
-                    status_code=403,
-                )(scope, receive, send)
+                if scope["type"] == "websocket":
+                    await send({"type": "websocket.close", "code": 1008})
+                else:
+                    await JSONResponse(
+                        {"error": "forbidden: reach this add-on through Home Assistant"},
+                        status_code=403,
+                    )(scope, receive, send)
                 return
         # Allowed (or permissive): call the wrapped app directly — zero
         # interference with StreamingResponse bodies or disconnect signalling.

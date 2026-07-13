@@ -64,17 +64,38 @@ def test_security_invariants_survive_promote(promoted) -> None:
     assert cfg.get("host_network") is not True
 
 
+# Top-level files the promote transform intentionally edits (identity/version
+# fields, Dockerfile labels, doc framing) -- excluded from the byte-identity
+# sweep below. None currently live under backend/ or frontend/, but the
+# exclusion travels with the dircmp ignore list so a future restructuring
+# can't silently defeat it.
+_TRANSFORM_EDITED_NAMES = {
+    "Dockerfile",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "DOCS.md",
+    "config.yaml",
+    "CHANGELOG.md",
+}
+
+
 def _recursive_dircmp_ok(cmp: filecmp.dircmp) -> list[str]:
-    """Walk a dircmp tree recursively and collect all mismatches found at any
-    depth. filecmp.dircmp does NOT recurse on its own -- `diff_files`,
-    `left_only`, and `right_only` only reflect the top-level directory, so a
-    mutation several subpackages deep (e.g. frontend/src/components/*.ts)
-    would silently pass an unrecursed check. `subdirs` gives us the child
-    dircmp objects to recurse into.
+    """Walk a dircmp tree recursively and byte-compare every common file,
+    collecting all mismatches found at any depth. filecmp.dircmp does NOT
+    recurse on its own -- `left_only`/`right_only` only reflect the top-level
+    directory, so a mutation several subpackages deep (e.g.
+    frontend/src/components/*.ts) would silently pass an unrecursed check.
+    `subdirs` gives us the child dircmp objects to recurse into.
+
+    Comparison is byte-level, not shallow (stat-based): `filecmp.cmpfiles`
+    with `shallow=False` reads file contents instead of trusting size+mtime,
+    matching the `read_bytes()` rigor already used for the `run.py` branch
+    below. A shallow compare would pass a hypothetical mutation that preserved
+    both size and mtime (e.g. via `copy2`-style copies), which we want caught.
     """
-    mismatches = [
-        f"{cmp.left}/{name}" for name in (cmp.diff_files or cmp.left_only or cmp.right_only)
-    ]
+    mismatches = [f"{cmp.left}/{name}" for name in (*cmp.left_only, *cmp.right_only)]
+    _, mismatched, errors = filecmp.cmpfiles(cmp.left, cmp.right, cmp.common_files, shallow=False)
+    mismatches.extend(f"{cmp.left}/{name}" for name in (*mismatched, *errors))
     for sub_cmp in cmp.subdirs.values():
         mismatches.extend(_recursive_dircmp_ok(sub_cmp))
     return mismatches
@@ -84,10 +105,18 @@ def test_code_is_byte_identical_across_flavors(promoted) -> None:
     root, _ = promoted
     dev = root / "homeassistant-addon-concierge-dev"
     stable = root / "homeassistant-addon-concierge"
-    for rel in ("backend/concierge", "frontend/src", "run.py"):
+    # Whole backend/ and frontend/ trees, not just their `concierge`/`src`
+    # subpackages: catches drift in files the transform never edits but also
+    # never should (backend/pyproject.toml, backend/uv.lock,
+    # frontend/package.json, translations/, .dockerignore, ...).
+    for rel in ("backend", "frontend", "run.py"):
         dev_path, stable_path = dev / rel, stable / rel
         if dev_path.is_dir():
-            cmp = filecmp.dircmp(dev_path, stable_path)
+            cmp = filecmp.dircmp(
+                dev_path,
+                stable_path,
+                ignore=[*filecmp.DEFAULT_IGNORES, *_TRANSFORM_EDITED_NAMES],
+            )
             mismatches = _recursive_dircmp_ok(cmp)
             assert not mismatches, f"{rel} differs between flavors: {mismatches}"
         else:
