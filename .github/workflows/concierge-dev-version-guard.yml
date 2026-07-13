@@ -1,0 +1,43 @@
+name: Concierge Dev — Version Guard
+
+on:
+  pull_request:
+    paths:
+      - "homeassistant-addon-concierge-dev/**"
+
+permissions:
+  contents: read
+
+jobs:
+  require-version-bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Require a dev version bump (X.Y.Z.devN, increasing)
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          BASE="origin/$BASE_REF"
+          CFG=homeassistant-addon-concierge-dev/config.yaml
+          ver() { python3 -c 'import sys,re;m=re.search(r"^version:\s*\"([^\"]+)\"",open(sys.argv[1]).read(),re.M);print(m.group(1) if m else "")' "$1"; }
+          NEW=$(ver "$CFG")
+          OLD=$(git show "$BASE:$CFG" 2>/dev/null | python3 -c 'import sys,re;m=re.search(r"^version:\s*\"([^\"]+)\"",sys.stdin.read(),re.M);print(m.group(1) if m else "")' || true)
+          if [ -z "$OLD" ]; then echo "New dev add-on (no base version) — OK."; exit 0; fi
+          if [ "$NEW" = "$OLD" ]; then
+            echo "::error::homeassistant-addon-concierge-dev changed but version is still $NEW — bump it."
+            exit 1
+          fi
+          python3 - "$OLD" "$NEW" <<'PY'
+          import re, sys
+          def key(v):
+              m = re.match(r"^(\d+)\.(\d+)\.(\d+)\.dev(\d+)$", v)
+              if not m: sys.exit(f"::error::dev version must be X.Y.Z.devN, got {v!r}")
+              return (int(m[1]), int(m[2]), int(m[3]), int(m[4]))
+          old, new = sys.argv[1], sys.argv[2]
+          if key(new) <= key(old):
+              sys.exit(f"::error::dev version must increase: {old} -> {new}")
+          print(f"dev version bump OK: {old} -> {new}")
+          PY
