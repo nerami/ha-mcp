@@ -1,6 +1,10 @@
+import asyncio
 import socket
+from collections.abc import AsyncIterator
 
+import httpx
 from fastapi import FastAPI
+from fastapi.responses import StreamingResponse
 from fastapi.testclient import TestClient
 
 from concierge import ingress_guard
@@ -53,3 +57,36 @@ def test_resolve_supervisor_ips_collects_addresses(monkeypatch) -> None:
 
     monkeypatch.setattr(socket, "getaddrinfo", fake)
     assert ingress_guard.resolve_supervisor_ips() == frozenset({"172.30.32.2"})
+
+
+async def test_streaming_response_passes_through_unbuffered() -> None:
+    # Proves the pure-ASGI guard delegates the stream instead of collecting it:
+    # chunks arrive one at a time, in order, through the guarded app.
+    chunks = [b"chunk-0\n", b"chunk-1\n", b"chunk-2\n"]
+
+    app = FastAPI()
+
+    @app.get("/stream")
+    def stream() -> StreamingResponse:
+        async def gen() -> AsyncIterator[bytes]:
+            for c in chunks:
+                yield c
+                await asyncio.sleep(0)  # yield control between chunks
+
+        return StreamingResponse(gen(), media_type="text/plain")
+
+    # Permissive (empty allow-set): the passthrough path we want to exercise.
+    ingress_guard.install_ingress_guard(app, allowed_ips=frozenset())
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://testserver"
+    ) as client:
+        received: list[bytes] = []
+        async with client.stream("GET", "/stream") as resp:
+            assert resp.status_code == 200
+            async for part in resp.aiter_bytes():
+                if part:
+                    received.append(part)
+
+    assert b"".join(received) == b"".join(chunks)
