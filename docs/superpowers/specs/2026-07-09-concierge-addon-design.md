@@ -309,6 +309,21 @@ not own storage) and static serving.
 
 ## 8. Add-on packaging
 
+- **Status (Plan 4, done): the two-flavor dev-first model is live.** The
+  promote automation and the ingress guard now exist:
+  `homeassistant-addon-concierge-dev/` is the only flavor edited directly,
+  guarded by `.github/workflows/concierge-dev-version-guard.yml` and
+  `concierge-stable-guard.yml`; `homeassistant-addon-concierge/` (stable) is
+  produced solely by the **Concierge — Promote Dev to Stable**
+  `workflow_dispatch` (`concierge-promote.yml`, via `scripts/concierge_sync.py`
+  + the `test_concierge_sync.py` drift gate), opening a draft PR — no stable
+  directory is committed yet, pending the pre-first-promote checklist in
+  `homeassistant-addon-concierge-dev/AGENTS.md`. The previously-open
+  hassio-network `/agui` reachability re-decision (tracked in
+  `homeassistant-addon-concierge-dev/AGENTS.md` "Security invariants") is
+  closed by `backend/concierge/ingress_guard.py` (source-IP enforcement
+  against the resolved `supervisor` hostname), subject to that same
+  live-verification gate.
 - **Two flavors, dev-first / promote-only** (mirrors the Webhook Proxy addon):
   `homeassistant-addon-concierge-dev/` is the *only* flavor edited directly;
   `homeassistant-addon-concierge/` (stable) is updated solely via a manual
@@ -367,6 +382,9 @@ not own storage) and static serving.
 (stdio, §5.2); AG-UI client (hand-parsed SSE, §6.2); no `pending_approvals`
 (§5.4); versions pinned (header).
 
+**Resolved (Plan 4):** the Webhook Proxy dev-first / promote CI flow (workflow
++ versioning guard) for the two flavors (§8) is now live.
+
 **Genuinely open — settle during implementation:**
 1. Real `anthropic:*` model IDs for chat + titles (docs use placeholder future
    IDs like `openai:gpt-5.2`; pin real ones at build).
@@ -375,8 +393,6 @@ not own storage) and static serving.
 3. Confirm the exact `metadata['annotations']` key casing via the wiring test
    (§10) before trusting the gating callback.
 4. `ingress_port` value and `panel_icon` choice.
-5. Adopt the Webhook Proxy dev-first / promote CI flow (workflow + versioning
-   guard) for the two flavors (§8).
 
 ## 12. Out of scope / future
 
