@@ -24,6 +24,7 @@ from pydantic_ai import Agent
 from pydantic_ai.ui.ag_ui import AGUIAdapter
 
 from concierge.config import Settings
+from concierge.ingress_guard import install_ingress_guard, resolve_supervisor_ips
 from concierge.sessions import SessionStore
 from concierge.stream import MessageAccumulator
 from concierge.title import generate_title
@@ -65,6 +66,8 @@ def create_app(
             yield
 
     app = FastAPI(title="concierge", lifespan=lifespan)
+    # Only Supervisor's ingress proxy may reach this app (see ingress_guard).
+    install_ingress_guard(app, allowed_ips=resolve_supervisor_ips())
 
     async def _maybe_title(thread_id: str, messages: list[dict[str, Any]]) -> None:
         # to_thread here is safe: if cancellation lands in this function the
