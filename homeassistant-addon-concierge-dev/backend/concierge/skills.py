@@ -27,6 +27,10 @@ _SKILL_INFIX = "ha-concierge-skill-"
 _OWN_SUFFIXES = ("-ha-mcp-concierge-dev", "-ha-mcp-concierge")
 _PROBE_ATTEMPTS = 3
 _PROBE_DELAY_SECONDS = 1.5
+# Per-attempt connect bound. A half-open server that accepts the TCP
+# connection but never completes the MCP handshake would otherwise hang a
+# single attempt forever, blowing past the retry loop's own budget.
+_PROBE_TIMEOUT_SECONDS = 5.0
 
 
 def repo_prefix(hostname: str) -> str | None:
@@ -62,15 +66,23 @@ async def probe_endpoint(url: str) -> bool:
     """Connect (and disconnect) an MCP toolset, retrying briefly."""
     for attempt in range(_PROBE_ATTEMPTS):
         try:
-            async with MCPToolset(url):
-                return True
+            async with asyncio.timeout(_PROBE_TIMEOUT_SECONDS):
+                async with MCPToolset(url):
+                    return True
         except Exception as exc:  # noqa: BLE001 - degrade per-skill, never crash
+            # asyncio.timeout raises TimeoutError (an Exception subclass), so a
+            # hung attempt is treated like any other failure: log + retry/skip.
+            reason = (
+                f"handshake timed out after {_PROBE_TIMEOUT_SECONDS}s"
+                if isinstance(exc, TimeoutError)
+                else str(exc)
+            )
             logger.warning(
                 "skill endpoint %s unreachable (attempt %d/%d): %s",
                 url,
                 attempt + 1,
                 _PROBE_ATTEMPTS,
-                exc,
+                reason,
             )
             if attempt < _PROBE_ATTEMPTS - 1:
                 await asyncio.sleep(_PROBE_DELAY_SECONDS)
@@ -86,6 +98,7 @@ async def resolve_skills(
     """Return (name, url) for every configured, reachable skill."""
     prefix = repo_prefix(hostname or socket.gethostname())
     pairs: list[tuple[str, str]] = []
+    seen_names: set[str] = set()
     for entry in settings.skills:
         url = skill_endpoint(entry, prefix)
         if url is None:
@@ -96,6 +109,20 @@ async def resolve_skills(
                     entry,
                 )
             continue
+        # `skill_name` maps '-' -> '_', so e.g. "my-skill" and "my_skill" both
+        # normalize to the same prefix. Registering two toolsets under one
+        # prefix would silently shadow tools, so keep the first and skip later
+        # collisions with a warning rather than mounting a duplicate.
+        name = skill_name(entry)
+        if name in seen_names:
+            logger.warning(
+                "skill %r collides with an already-resolved skill on "
+                "normalized name %r; skipping the duplicate (keeping the first)",
+                entry,
+                name,
+            )
+            continue
         if await probe(url):
-            pairs.append((skill_name(entry), url))
+            seen_names.add(name)
+            pairs.append((name, url))
     return pairs

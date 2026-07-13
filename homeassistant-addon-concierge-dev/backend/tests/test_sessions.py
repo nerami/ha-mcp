@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from concierge.sessions import SessionStore
@@ -53,3 +54,37 @@ def test_persists_across_instances(tmp_path: Path) -> None:
         "t1", [{"id": "u1", "role": "user", "content": "x"}]
     )
     assert SessionStore(path).get_messages("t1") != []
+
+
+def test_concurrent_cross_thread_access_is_safe(tmp_path: Path) -> None:
+    # The store shares ONE sqlite3 connection (check_same_thread=False) across
+    # threads: reads run in worker threads (asyncio.to_thread) while writes may
+    # run on the event-loop thread. Interleave writes/reads/lists from many
+    # threads and assert no exception + consistent, well-formed results.
+    store = make_store(tmp_path)
+    thread_ids = [f"t{i}" for i in range(12)]
+
+    def work(tid: str) -> int:
+        for turn in range(20):
+            msgs = [
+                {"id": f"{tid}-u{turn}", "role": "user", "content": str(turn)},
+                {"id": f"{tid}-a{turn}", "role": "assistant", "content": "ok"},
+            ]
+            store.replace_messages(tid, msgs)
+            got = store.get_messages(tid)
+            # Whole-thread replace is atomic under the lock: never a partial
+            # (odd-length) view, always exactly the two messages we wrote.
+            assert len(got) == 2
+            store.list_threads()
+            store.rename_thread(tid, f"title-{turn}")
+        return len(store.get_messages(tid))
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(work, thread_ids))
+
+    assert results == [2] * len(thread_ids)
+    # Every thread persisted exactly its final two messages.
+    listed = {t["id"] for t in store.list_threads()}
+    assert listed == set(thread_ids)
+    for tid in thread_ids:
+        assert len(store.get_messages(tid)) == 2
