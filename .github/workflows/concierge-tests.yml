@@ -1,0 +1,56 @@
+name: Concierge — Tests
+
+on:
+  pull_request:
+    paths:
+      - "homeassistant-addon-concierge-dev/**"
+      - "scripts/concierge_sync.py"
+      - "tests/src/unit/test_concierge_sync.py"
+      - ".github/workflows/concierge-tests.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: homeassistant-addon-concierge-dev/backend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - run: uv sync --group dev
+      - run: uv run pytest -q
+      - run: uv run ruff check . && uv run ruff check ../run.py
+      - run: uv run mypy concierge/
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: homeassistant-addon-concierge-dev/frontend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npx vitest run
+      - run: npm run build
+
+  sync-drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - run: uv run pytest tests/src/unit/test_concierge_sync.py -q
+
+  docker-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build + run the add-on image the way Supervisor would
+        run: homeassistant-addon-concierge-dev/scripts/smoke.sh
