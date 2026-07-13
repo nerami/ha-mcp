@@ -81,9 +81,12 @@ def transform_config(text: str, *, to_stable: bool, version: str) -> str:
         text = text.replace(
             'name: "Concierge for HA MCP (Dev)"', 'name: "Concierge for HA MCP"'
         )
-        text = text.replace(
-            'description: "DEV CHANNEL (unstable) — ',
+        text = re.sub(
+            r'^description:\s*"DEV CHANNEL \(unstable\) — ',
             'description: "',
+            text,
+            count=1,
+            flags=re.M,
         )
         text = text.replace('panel_title: "Concierge (Dev)"', 'panel_title: "Concierge"')
         # stage: experimental sits alone on its own line, right after `url:`.
@@ -94,9 +97,12 @@ def transform_config(text: str, *, to_stable: bool, version: str) -> str:
         text = text.replace(
             'name: "Concierge for HA MCP"', 'name: "Concierge for HA MCP (Dev)"'
         )
-        text = text.replace(
-            'description: "',
+        text = re.sub(
+            r'^description:\s*"',
             'description: "DEV CHANNEL (unstable) — ',
+            text,
+            count=1,
+            flags=re.M,
         )
         text = text.replace('panel_title: "Concierge"', 'panel_title: "Concierge (Dev)"')
         text = re.sub(r"^boot:\s*auto\b", "boot: manual", text, flags=re.M)
@@ -156,10 +162,12 @@ def sync(direction: str, bump: str | None, root: Path = REPO_ROOT) -> str:
         _read_version((stable / "config.yaml").read_text()) if stable.exists() else None
     )
     if to_stable:
-        assert bump is not None
+        if bump is None:
+            raise ValueError("--bump is required for promote")
         version = next_stable_version(current_stable, dev_version, bump)
     else:
-        assert current_stable is not None
+        if current_stable is None:
+            raise ValueError("reset requires an existing stable dir")
         version = next_dev_version(current_stable)
 
     # CHANGELOG.md is per-flavor: stash the destination's own copy before the
